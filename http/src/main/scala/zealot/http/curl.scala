@@ -117,6 +117,12 @@ object curl {
             }
           }
 
+          def encodeUrl(pairs: Seq[(String, String)]): Seq[String] = {
+            pairs.flatMap {
+              case (name, value) => Seq("--data-urlencode", s"$name=$value")
+            }
+          }
+
           def encodeMultipart(pairs: Seq[(String, String)]): Seq[String] = {
             pairs.flatMap {
               case (name, value) => Seq("-F", s"$name=$value")
@@ -135,10 +141,11 @@ object curl {
               } yield (name, value)
 
               request.formEncoding match {
-                case Data       => encodeData       (pairs)
-                case DataRaw    => encodeDataRaw    (pairs)
-                case DataBinary => encodeDataBinary (pairs)
-                case Multipart  => encodeMultipart  (pairs)
+                case Data          => encodeData       (pairs)
+                case DataRaw       => encodeDataRaw    (pairs)
+                case DataBinary    => encodeDataBinary (pairs)
+                case DataUrlEncode => encodeUrl        (pairs)
+                case Multipart     => encodeMultipart  (pairs)
               }
 
             case _ => Seq.empty
