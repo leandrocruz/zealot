@@ -28,13 +28,20 @@ enum HttpMethod:
 enum FormEncoding:
   case Data, DataRaw, DataBinary, Multipart
 
-trait Cookie {
+trait RequestCookie {
   def name    : String
   def value   : String
-  def path    : Option[String]
-  def domain  : Option[String]
-  def expires : Option[ZonedDateTime]
-  def maxAge  : Option[Long]
+}
+
+trait ResponseCookie extends RequestCookie {
+  def url       : String // the request url the received this cookie as response
+  def path      : Option[String]
+  def domain    : Option[String]
+  def secure    : Option[Boolean]
+  def httpOnly  : Option[Boolean]
+  def expires   : Option[ZonedDateTime]
+  def maxAge    : Option[Long]
+  def toRequest : RequestCookie = this
 }
 
 trait HtmlElement {
@@ -61,7 +68,7 @@ trait HttpResponse {
   def code                                      : Int
   def charset                                   : Option[Charset]
   def headers                                   : Map[String, Set[String]]
-  def cookies                                   : Seq[Cookie]
+  def cookies                                   : Seq[ResponseCookie]
   def body                                      : File
   def bodyAs[T](using decoder: JsonDecoder[T])  : ZLT[T]
   def bodyAsString                              : ZLT[String]
@@ -93,13 +100,15 @@ case object Http1_1 extends HttpVersion
 case object Http2   extends HttpVersion
 case object Http3   extends HttpVersion
 
-trait ClientCertificate
+sealed trait ClientCertificate
+case class PemClientCertificate(file: File) extends ClientCertificate
 
 trait HttpRequest {
   def url             (replace: String)                    : HttpRequest
   def header          (name: String, value: String)        : HttpRequest
   def param           (name: String, value: String)        : HttpRequest
   def cookie          (name: String, value: String)        : HttpRequest
+  def cookies         (values: Map[String, String])        : HttpRequest
   def field           (name: String, value: String)        : HttpRequest
   def formEncoding    (encoding: FormEncoding)             : HttpRequest
   def followRedirects (follow: Boolean)                    : HttpRequest
@@ -122,7 +131,7 @@ trait ExecutableHttpRequest {
   def parameters      : Map[String, Set[String]]
   def headers         : Map[String, Set[String]]
   def fields          : Map[String, Set[String]]
-  def cookies         : Set[Cookie]
+  def cookies         : Set[RequestCookie]
   def body            : HttpBody
   def formEncoding    : FormEncoding
   def followRedirects : Boolean
@@ -165,7 +174,10 @@ trait Script
 case class ExternalScript(src: String) extends Script
 case class InlineScript(body: String)  extends Script
 
-case class DefaultCookie(
+case class DefaultRequestCookie(name: String, value: String) extends RequestCookie
+
+case class DefaultResponseCookie(
+  url      : String,
   name     : String,
   value    : String,
   domain   : Option[String]        = None,
@@ -174,7 +186,7 @@ case class DefaultCookie(
   httpOnly : Option[Boolean]       = None,
   maxAge   : Option[Long]          = None,
   expires  : Option[ZonedDateTime] = None
-) extends Cookie
+) extends ResponseCookie
 
 object DefaultCookie {
   /*
@@ -189,7 +201,7 @@ object DefaultCookie {
   private val re1 = s"[a-zA-Z]{3}, (\\d{2}) ([a-zA-Z]{3}) (\\d{4}) (\\d{2}):(\\d{2}):(\\d{2}) GMT".r
   private val re2 = s"[a-zA-Z]{3}, (\\d{2})\\-([a-zA-Z]{3})\\-(\\d{4}) (\\d{2}):(\\d{2}):(\\d{2}) GMT".r
 
-  def from(str0: String, dropDoubleQuotes: Boolean = true): Try[DefaultCookie] = Try {
+  def from(url: String, str0: String, dropDoubleQuotes: Boolean = true): Try[ResponseCookie] = Try {
 
     def parseDate(value: String): ZonedDateTime = {
 
@@ -229,7 +241,7 @@ object DefaultCookie {
       .split(";")
       .map(_.trim)
       .zipWithIndex
-      .foldLeft(DefaultCookie("", "")) { (cookie, tuple) =>
+      .foldLeft(DefaultResponseCookie(url, "", "")) { (cookie, tuple) =>
         val slice = tuple._1
         val index = tuple._2
         if(index == 0) {
@@ -271,7 +283,7 @@ case class DefaultHttpSession(ref: Ref[Cookies], environment: HttpEnvironment, c
     }
   }
 
-  private def cookiesByDomain(domain: String): ZLT[Set[Cookie]] = {
+  private def cookiesByDomain(domain: String): ZLT[Set[ResponseCookie]] = {
     for {
       cookies <- ref.get
     } yield cookies.cache.getOrElse(domain, Set.empty)
@@ -286,7 +298,7 @@ case class DefaultHttpSession(ref: Ref[Cookies], environment: HttpEnvironment, c
 
     def update: Task[Unit] = {
 
-      def update(now: ZonedDateTime, domain: String)(cookie: Cookie): Task[Unit] = {
+      def update(now: ZonedDateTime, domain: String)(cookie: ResponseCookie): Task[Unit] = {
         val remove = cookie.expires.exists(_.isBefore(now))
         ref.update { _.updateDomain(domain, cookie, remove) }
       }
@@ -310,7 +322,7 @@ case class DefaultHttpSession(ref: Ref[Cookies], environment: HttpEnvironment, c
     } yield DefaultHttpRequest(
       url     = url,
       ua      = ua,
-      cookies = cookies
+      cookies = cookies.map(_.toRequest)
     )
   }
 
@@ -331,7 +343,7 @@ case class DefaultHttpSession(ref: Ref[Cookies], environment: HttpEnvironment, c
         ua      = ua,
         method  = method.getOrElse(HttpMethod.Get),
         fields  = form.values.view.mapValues(Set(_)).toMap,
-        cookies = cookies
+        cookies = cookies.map(_.toRequest)
       )
     }
 
@@ -358,7 +370,7 @@ case class DefaultHttpSession(ref: Ref[Cookies], environment: HttpEnvironment, c
   }
 }
 
-case class DefaultHttpResponse(code: Int, charset: Option[Charset], headers: Map[String, Set[String]], cookies: Seq[Cookie], body: File) extends HttpResponse {
+case class DefaultHttpResponse(code: Int, charset: Option[Charset], headers: Map[String, Set[String]], cookies: Seq[ResponseCookie], body: File) extends HttpResponse {
 
   override def document(using session: HttpSession): ZLT[HtmlElement] = {
 
@@ -487,7 +499,7 @@ case class DefaultHttpRequest (
   followRedirects : Boolean                   = true,
   parameters      : Map[String, Set[String]]  = Map.empty, /* query string */
   headers         : Map[String, Set[String]]  = Map.empty,
-  cookies         : Set[Cookie]               = Set.empty,
+  cookies         : Set[RequestCookie]        = Set.empty,
   fields          : Map[String, Set[String]]  = Map.empty,
   certificate     : Option[ClientCertificate] = None,
   version         : Option[HttpVersion]       = None,
@@ -507,7 +519,8 @@ case class DefaultHttpRequest (
   override def header          (name: String, value: String) : HttpRequest = copy(headers         = update(headers)   (name, value))
   override def param           (name: String, value: String) : HttpRequest = copy(parameters      = update(parameters)(name, value))
   override def field           (name: String, value: String) : HttpRequest = copy(fields          = update(fields)    (name, value))
-  override def cookie          (name: String, value: String) : HttpRequest = copy(cookies         = cookies + DefaultCookie(name, value))
+  override def cookie          (name: String, value: String) : HttpRequest = copy(cookies         = cookies + DefaultRequestCookie(name, value))
+  override def cookies         (values: Map[String, String]) : HttpRequest = copy(cookies         = cookies ++ values.map(DefaultRequestCookie(_, _)))
   override def formEncoding    (formEncoding: FormEncoding)  : HttpRequest = copy(formEncoding    = formEncoding)
   override def followRedirects (follow: Boolean)             : HttpRequest = copy(followRedirects = follow)
   override def certificate     (cert: ClientCertificate)     : HttpRequest = copy(certificate     = Some(cert))
@@ -635,8 +648,8 @@ object Http {
   def layer: ZLayer[Any, Nothing, DefaultHttp] = ZLayer.fromFunction(DefaultHttp.apply _)
 }
 
-case class Cookies(cache: Map[String, Set[Cookie]]) {
-  def updateDomain(domain: String, cookie: Cookie, remove: Boolean): Cookies = {
+case class Cookies(cache: Map[String, Set[ResponseCookie]]) {
+  def updateDomain(domain: String, cookie: ResponseCookie, remove: Boolean): Cookies = {
 
     cache.get(domain) match
       case Some(set) if remove => copy(cache = cache + (domain -> (set.filterNot(_.name == cookie.name)         )))

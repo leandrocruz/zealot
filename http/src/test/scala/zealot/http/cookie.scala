@@ -3,15 +3,15 @@ package zealot.http
 import org.scalatest.*
 import flatspec.*
 import matchers.*
-import zealot.http.{Cookie, Cookies, DefaultCookie}
+import zealot.http.*
 
 import java.time.{ZoneId, ZonedDateTime}
 import scala.util.{Failure, Success}
 
 class CookieTest extends AnyFlatSpec with should.Matchers {
 
-  def test(value: String)(fn: DefaultCookie => Unit) = {
-    DefaultCookie.from(value) match {
+  def test(value: String)(fn: ResponseCookie => Unit) = {
+    DefaultCookie.from("", value) match {
       case Failure(cause)  => fail(cause)
       case Success(cookie) => fn(cookie)
     }
@@ -64,9 +64,9 @@ class CookieTest extends AnyFlatSpec with should.Matchers {
 
   it should "update the cookie jar" in {
 
-    val c1 = DefaultCookie("name", "value")
-    val c2 = DefaultCookie("name", "other")
-    val c3 = DefaultCookie("other", "value")
+    val c1 = DefaultResponseCookie("", "name", "value")
+    val c2 = DefaultResponseCookie("", "name", "other")
+    val c3 = DefaultResponseCookie("", "other", "value")
 
     val jar = Cookies(Map.empty)
     val jar2 = jar.updateDomain("a", c1 , false)

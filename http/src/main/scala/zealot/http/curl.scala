@@ -40,7 +40,13 @@ object curl {
         else session.baseUrl + "/" + request.url
       }
 
-      def build(count: Int, headersFile: File, bodyFile: File): Task[Seq[String]] = {
+      def getUrl: String = {
+        session.environment match
+          case Production => targetUrl
+          case Test(host, port, scenario) => s"http://$host:$port/$scenario"
+      }
+
+      def build(count: Int, url: String, headersFile: File, bodyFile: File): Task[Seq[String]] = {
 
         def curl: Seq[String] = Seq("curl", "-k")
 
@@ -60,8 +66,8 @@ object curl {
 
         def certificate: Seq[String] = {
           request.certificate match
-            case None        => Seq.empty
-            case Some(value) => Seq("--cert", "TODO: Certificate File")
+            case None                             => Seq.empty
+            case Some(PemClientCertificate(file)) => Seq("--cert", file.pathAsString)
         }
 
         def requestMethod: Seq[String] = {
@@ -150,12 +156,6 @@ object curl {
 
         }
 
-        def url: String = {
-          session.environment match
-            case Production                 => targetUrl
-            case Test(host, port, scenario) => s"http://$host:$port/$scenario"
-        }
-
         def proxy = Seq.empty[String] //Seq("--proxy","http://localhost:8080", "https://localhost:8080")
 
         ZIO.attempt(
@@ -180,7 +180,7 @@ object curl {
           case Failure(error) => ZIO.fail(new Exception(s"Error running command '$cmd' at '${ctx.root}'", error))
       }
 
-      def parse(headersFile: File, bodyFile: File, output: String): Task[DefaultHttpResponse] = {
+      def parse(url: String, headersFile: File, bodyFile: File, output: String): Task[DefaultHttpResponse] = {
         //TODO: make this lazy
         val lines = headersFile.lines.map(_.trim).filterNot(_.isEmpty)
 
@@ -210,9 +210,9 @@ object curl {
               ZIO.succeed(None)
         }
 
-        def parseCookies(headers: Map[String, Set[String]]): Task[Seq[Cookie]] = {
+        def parseCookies(headers: Map[String, Set[String]]): Task[Seq[ResponseCookie]] = {
 
-          def toCookie(value: String): Task[Cookie] = ZIO.fromTry(DefaultCookie.from(value))
+          def toCookie(value: String): Task[ResponseCookie] = ZIO.fromTry(DefaultCookie.from(url, value))
 
           val values = headers filter {
             case (name, _) => name.equalsIgnoreCase("set-cookie")
@@ -325,16 +325,17 @@ object curl {
       }
 
       val tag = request.name.map(name => "-"+name).getOrElse("")
+      val url = getUrl
       for {
         count        <- counter.updateAndGet(_ + 1)
         reqFile      <- ensureFile(name = s"resp-${count}${tag}.req")     .mapError(onError("Error creating request file"     ))
         resFile      <- ensureFile(name = s"resp-${count}${tag}.res")     .mapError(onError("Error creating response file"    ))
         headersFile  <- ensureFile(name = s"resp-${count}${tag}.headers") .mapError(onError("Error creating headers file"     ))
         _            <- printRequest(count)
-        cmd          <- build(count, headersFile, resFile)                .mapError(onError("Error building curl command line"))
+        cmd          <- build(count, url, headersFile, resFile)           .mapError(onError("Error building curl command line"))
         _            <- dumpRequest(cmd, reqFile)                         .mapError(onError("Error dumping request"           ))
         output       <- run(cmd)                                          .mapError(onError("Error executing curl"            ))
-        response     <- parse(headersFile, resFile, output)               .mapError(onError("Error parsing curl response"     ))
+        response     <- parse(url, headersFile, resFile, output)          .mapError(onError("Error parsing curl response"     ))
         now          <- Clock.currentDateTime
         _            <- printResponse(now.toZonedDateTime, response)
         renamed      <- renameResponseFile(response, resFile)             .mapError(onError("Error renaming response file"    ))
