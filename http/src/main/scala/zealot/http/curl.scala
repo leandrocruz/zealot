@@ -35,9 +35,9 @@ object curl {
 
       def targetUrl = {
         val value = request.url.toLowerCase
-        if (value.startsWith("http")) request.url
-        else if (value.startsWith("/")) session.baseUrl + request.url
-        else session.baseUrl + "/" + request.url
+        if      (value.startsWith("http") || value.startsWith("https")) request.url
+        else if (value.startsWith("/"))                                 session.baseUrl + request.url
+        else                                                            session.baseUrl + "/" + request.url
       }
 
       def getUrl: String = {
@@ -103,7 +103,7 @@ object curl {
 //            case _                              => Seq.empty
 //          }
 
-          Seq("-A", s"'${request.ua}'") ++ (mockHeaders ++ (for {
+          Seq("-A", request.ua) ++ (mockHeaders ++ (for {
             (name, values) <- request.headers
             value          <- values
           } yield (s"$name:$value")).toSeq).flatMap(value => Seq("-H", value))
@@ -244,7 +244,7 @@ object curl {
 
         for {
           _ <- ZIO.attempt(file.writeText(prefix))
-          _ <- ZIO.attempt(file.appendText(cmd.mkString("\n")))
+          _ <- ZIO.attempt(file.appendText(cmd.mkString(" \\\n")))
         } yield ()
       }
 
