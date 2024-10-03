@@ -10,7 +10,7 @@ import zio.json.*
 import zio.json.ast.Json
 
 import java.io.{FileInputStream, InputStream}
-import java.net.URL
+import java.net.{URI, URL}
 import java.nio.charset.Charset
 import java.time.format.DateTimeFormatter
 import java.time.{ZoneId, ZonedDateTime}
@@ -26,7 +26,7 @@ enum HttpMethod:
   case Head, Get, Post, Put, Delete
 
 enum FormEncoding:
-  case Data, DataRaw, DataBinary, Multipart
+  case Data, DataRaw, DataBinary, DataUrlEncode, Multipart
 
 trait RequestCookie {
   def name    : String
@@ -75,6 +75,7 @@ trait HttpResponse {
   def redirect                                  : ZLT[String]
   def document(using session: HttpSession)      : ZLT[HtmlElement]
   def header(name: String)                      : Option[String]
+  def requestedUrl                              : String
 }
 
 @FunctionalInterface
@@ -155,17 +156,19 @@ trait HttpSession {
   def charset     : Charset
   def baseUrl     : String
   def ua          : String
+  def certificate : Option[ClientCertificate]
   def update(request: ExecutableHttpRequest, response: HttpResponse): ZLT[Unit]
   def requestGiven(url: String)    : ZLT[HttpRequest]
   def requestGiven(form: HtmlForm) : ZLT[HttpRequest]
   def rebase(baseUrl: String)      : ZLT[HttpSession]
   def cookies                      : ZLT[Cookies]
+  def cookiesGiven(url: String)    : ZLT[Seq[ResponseCookie]]
 }
 
 trait Http {
-  def session(charset: Charset, baseUrl: String, ua: String)(using environment: HttpEnvironment) : ZLT[HttpSession]
-  def url(url: String)                                      (using session: HttpSession)         : ZLT[HttpRequest]
-  def requestGiven(form: HtmlForm)                          (using session: HttpSession)         : ZLT[HttpRequest]
+  def session(charset: Charset, baseUrl: String, ua: String, certificate: Option[ClientCertificate])(using environment: HttpEnvironment) : ZLT[HttpSession]
+  def url(url: String)                                                                              (using session: HttpSession)         : ZLT[HttpRequest]
+  def requestGiven(form: HtmlForm)                                                                  (using session: HttpSession)         : ZLT[HttpRequest]
 }
 
 trait Script
@@ -271,7 +274,15 @@ object DefaultCookie {
   }
 }
 
-case class DefaultHttpSession(ref: Ref[Cookies], environment: HttpEnvironment, charset: Charset, baseUrl: String, ua: String) extends HttpSession {
+case class DefaultHttpSession(
+  history     : Ref[Seq[(ZonedDateTime, String)]],
+  ref         : Ref[Cookies],
+  environment : HttpEnvironment,
+  charset     : Charset,
+  baseUrl     : String,
+  ua          : String,
+  certificate : Option[ClientCertificate] = None
+) extends HttpSession {
 
   private def domainGiven(url: String): ZLT[String] = {
     if (url.startsWith("http://") || url.startsWith("https://")) {
@@ -307,6 +318,7 @@ case class DefaultHttpSession(ref: Ref[Cookies], environment: HttpEnvironment, c
 
       for {
         now     <- Clock.currentDateTime.map(_.toZonedDateTime)
+        _       <- history.update(_ :+ (now, response.requestedUrl))
         domain  <- domainGiven(request.url).mapError(be => be.cause.map(new Exception(_)).getOrElse(new Exception(s"Error extraindo domínio da url '${request.url}'")))
         _       <- ZIO.foreach(response.cookies) { update(now, domain) }
       } yield ZIO.unit
@@ -320,9 +332,10 @@ case class DefaultHttpSession(ref: Ref[Cookies], environment: HttpEnvironment, c
       domain  <- domainGiven(url)
       cookies <- cookiesByDomain(domain)
     } yield DefaultHttpRequest(
-      url     = url,
-      ua      = ua,
-      cookies = cookies.map(_.toRequest)
+      url         = url,
+      ua          = ua,
+      cookies     = cookies.map(_.toRequest),
+      certificate = certificate
     )
   }
 
@@ -339,11 +352,12 @@ case class DefaultHttpSession(ref: Ref[Cookies], environment: HttpEnvironment, c
         domain  <- domainGiven(form.action)
         cookies <- cookiesByDomain(domain)
       } yield DefaultHttpRequest(
-        url     = form.action,
-        ua      = ua,
-        method  = method.getOrElse(HttpMethod.Get),
-        fields  = form.values.view.mapValues(Set(_)).toMap,
-        cookies = cookies.map(_.toRequest)
+        url         = form.action,
+        ua          = ua,
+        method      = method.getOrElse(HttpMethod.Get),
+        fields      = form.values.view.mapValues(Set(_)).toMap,
+        cookies     = cookies.map(_.toRequest),
+        certificate = certificate
       )
     }
 
@@ -368,9 +382,22 @@ case class DefaultHttpSession(ref: Ref[Cookies], environment: HttpEnvironment, c
   override def cookies: ZLT[Cookies] = {
     ref.get
   }
+
+  override def cookiesGiven(url: String): ZLT[Seq[ResponseCookie]] = {
+    for {
+      dom    <- domainGiven(url)
+      result <- cookiesByDomain(dom)
+    } yield result.toSeq
+  }
 }
 
-case class DefaultHttpResponse(code: Int, charset: Option[Charset], headers: Map[String, Set[String]], cookies: Seq[ResponseCookie], body: File) extends HttpResponse {
+case class DefaultHttpResponse(
+  requestedUrl : String,
+  code         : Int,
+  charset      : Option[Charset],
+  headers      : Map[String, Set[String]],
+  cookies      : Seq[ResponseCookie],
+  body         : File) extends HttpResponse {
 
   override def document(using session: HttpSession): ZLT[HtmlElement] = {
 
@@ -540,11 +567,21 @@ case class DefaultHttpRequest (
   private def exec(expectations: Seq[Expectation], method: Option[HttpMethod])(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse] = {
 
     def handleRedirect(response: HttpResponse): ZLT[HttpResponse] = {
+
+      def fixRelativeUrl(location: String): ZLT[String] = {
+        if(location.startsWith("..")) { //FIXME: not sure about this
+          ZIO.attempt(new URI(url).resolve(new URI(location)).normalize().toString).mapError(BotError.of(Outcome.HttpError, s"Error normalizing relative redirect '${location}'"))
+        } else {
+          ZIO.succeed(location)
+        }
+      }
+
       def follow: ZLT[HttpResponse] = {
         for {
           location <- response.redirect
-          req      <- session.requestGiven(location)
-          res      <- req.named(s"follow-redirect-of-${name.getOrElse("_")}").get()
+          loc      <- fixRelativeUrl(location)
+          req      <- session.requestGiven(loc)
+          res      <- req.named(s"FR-${name.getOrElse("_")}").get()
         } yield res
       }
 
@@ -661,10 +698,11 @@ case class Cookies(cache: Map[String, Set[ResponseCookie]]) {
 
 case class DefaultHttp() extends Http {
 
-  override def session(charset: Charset, baseUrl: String, ua: String)(using environment: HttpEnvironment): ZLT[HttpSession] = {
+  override def session(charset: Charset, baseUrl: String, ua: String, certificate: Option[ClientCertificate])(using environment: HttpEnvironment): ZLT[HttpSession] = {
     for {
       ref <- Ref.make(Cookies(Map.empty))
-    } yield DefaultHttpSession(ref, environment, charset, baseUrl, ua)
+      his <- Ref.make(Seq.empty)
+    } yield DefaultHttpSession(his, ref, environment, charset, baseUrl, ua, certificate)
   }
 
   override def url(url: String)(using session: HttpSession): ZLT[HttpRequest] = {

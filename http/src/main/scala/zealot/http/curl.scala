@@ -1,5 +1,7 @@
 package zealot.http
 
+import java.net.URI
+
 object curl {
 
   import better.files.*
@@ -235,7 +237,7 @@ object curl {
           headers <- readHeaders
           charset <- readCharset(headers)
           cookies <- parseCookies(headers)
-        } yield DefaultHttpResponse(code, charset, headers, cookies, bodyFile)
+        } yield DefaultHttpResponse(url, code, charset, headers, cookies, bodyFile)
       }
 
       def ensureFile(name: String): Task[File] = {
