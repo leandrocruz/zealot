@@ -161,7 +161,14 @@ object curl {
 
         }
 
-        def proxy = Seq.empty[String] //Seq("--proxy","http://localhost:8080", "https://localhost:8080")
+        def proxy: Seq[String] = {
+          def proxyGiven(p: HttpProxy): Seq[String] = {
+            val hostAndPort = s"${p.host}:${p.port}"
+            Seq("--proxy", p.auth.map(a => s"${a.username}:${a.password}@$hostAndPort").getOrElse(hostAndPort))
+          }
+
+          session.proxy.map(proxyGiven).getOrElse(Seq.empty)
+        }
 
         ZIO.attempt(
            curl ++ version ++ requestMethod ++ proxy ++ certificate ++ cookies ++ headerFields ++ formFields ++ dumpHeaders ++ dumpBody ++ dumpOutput ++ Seq(url)

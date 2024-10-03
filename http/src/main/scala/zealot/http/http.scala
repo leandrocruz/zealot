@@ -151,12 +151,21 @@ sealed trait HttpEnvironment
 case object Production                                     extends HttpEnvironment
 case class Test(host: String, port: Int, scenario: String) extends HttpEnvironment
 
+case class ProxyAuth(username: String, password: String)
+
+case class HttpProxy(
+  host : String,
+  port : Int,
+  auth : Option[ProxyAuth] = None
+)
+
 trait HttpSession {
   def environment : HttpEnvironment
   def charset     : Charset
   def baseUrl     : String
   def ua          : String
   def certificate : Option[ClientCertificate]
+  def proxy       : Option[HttpProxy]
   def update(request: ExecutableHttpRequest, response: HttpResponse): ZLT[Unit]
   def requestGiven(url: String)    : ZLT[HttpRequest]
   def requestGiven(form: HtmlForm) : ZLT[HttpRequest]
@@ -167,9 +176,16 @@ trait HttpSession {
 }
 
 trait Http {
-  def session(charset: Charset, baseUrl: String, ua: String, certificate: Option[ClientCertificate])(using environment: HttpEnvironment) : ZLT[HttpSession]
-  def url(url: String)                                                                              (using session: HttpSession)         : ZLT[HttpRequest]
-  def requestGiven(form: HtmlForm)                                                                  (using session: HttpSession)         : ZLT[HttpRequest]
+  def session(
+    charset     : Charset,
+    baseUrl     : String,
+    ua          : String,
+    proxy       : Option[HttpProxy]         = None,
+    certificate : Option[ClientCertificate] = None
+  )(using environment: HttpEnvironment) : ZLT[HttpSession]
+
+  def url(url: String)            (using session: HttpSession): ZLT[HttpRequest]
+  def requestGiven(form: HtmlForm)(using session: HttpSession): ZLT[HttpRequest]
 }
 
 trait Script
@@ -283,6 +299,7 @@ case class DefaultHttpSession(
   charset     : Charset,
   baseUrl     : String,
   ua          : String,
+  proxy       : Option[HttpProxy] = None,
   certificate : Option[ClientCertificate] = None
 ) extends HttpSession {
 
@@ -701,12 +718,22 @@ case class Cookies(cache: Map[String, Set[ResponseCookie]]) {
 
 case class DefaultHttp() extends Http {
 
-  override def session(charset: Charset, baseUrl: String, ua: String, certificate: Option[ClientCertificate])(using environment: HttpEnvironment): ZLT[HttpSession] = {
+  override def session(charset: Charset, baseUrl: String, ua: String, proxy: Option[HttpProxy], certificate: Option[ClientCertificate])(using environment: HttpEnvironment): ZLT[HttpSession] = {
     for {
       counter <- Ref.make(0)
       cookies <- Ref.make(Cookies(Map.empty))
       history <- Ref.make(Seq.empty)
-    } yield DefaultHttpSession(counter, history, cookies, environment, charset, baseUrl, ua, certificate)
+    } yield DefaultHttpSession(
+      counter,
+      history,
+      cookies,
+      environment,
+      charset,
+      baseUrl,
+      ua,
+      proxy,
+      certificate
+    )
   }
 
   override def url(url: String)(using session: HttpSession): ZLT[HttpRequest] = {
