@@ -17,17 +17,13 @@ object curl {
   import scala.util.{Failure, Success, Try}
 
   object CurlHttpEngine {
-    def layer = ZLayer {
-      for {
-        counter <- Ref.make(0)
-      } yield CurlHttpEngine(counter)
-    }
+    def layer = ZLayer.succeed { CurlHttpEngine() }
   }
 
   /*
    * See https://ec.haxx.se/index.html
    */
-  case class CurlHttpEngine(counter: Ref[Int]) extends HttpEngine {
+  case class CurlHttpEngine() extends HttpEngine {
 
     private val traceRegex = """(.*?)\((.*?):([^:]*?)\)""".r
 
@@ -336,7 +332,7 @@ object curl {
       val tag = request.name.map(name => "-"+name).getOrElse("")
       val url = getUrl
       for {
-        count        <- counter.updateAndGet(_ + 1)
+        count        <- session.count
         reqFile      <- ensureFile(name = s"resp-${count}${tag}.req")     .mapError(onError("Error creating request file"     ))
         resFile      <- ensureFile(name = s"resp-${count}${tag}.res")     .mapError(onError("Error creating response file"    ))
         headersFile  <- ensureFile(name = s"resp-${count}${tag}.headers") .mapError(onError("Error creating headers file"     ))

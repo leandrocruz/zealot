@@ -163,6 +163,7 @@ trait HttpSession {
   def rebase(baseUrl: String)      : ZLT[HttpSession]
   def cookies                      : ZLT[Cookies]
   def cookiesGiven(url: String)    : ZLT[Seq[ResponseCookie]]
+  def count                        : ZLT[Int]
 }
 
 trait Http {
@@ -275,6 +276,7 @@ object DefaultCookie {
 }
 
 case class DefaultHttpSession(
+  counter     : Ref[Int],
   history     : Ref[Seq[(ZonedDateTime, String)]],
   ref         : Ref[Cookies],
   environment : HttpEnvironment,
@@ -300,6 +302,7 @@ case class DefaultHttpSession(
     } yield cookies.cache.getOrElse(domain, Set.empty)
   }
 
+  override def count: ZLT[Int] = counter.getAndUpdate(_ + 1)
   override def update(request: ExecutableHttpRequest, response: HttpResponse): ZLT[Unit] = {
 
     //      response.headers.foreach {
@@ -700,9 +703,10 @@ case class DefaultHttp() extends Http {
 
   override def session(charset: Charset, baseUrl: String, ua: String, certificate: Option[ClientCertificate])(using environment: HttpEnvironment): ZLT[HttpSession] = {
     for {
-      ref <- Ref.make(Cookies(Map.empty))
-      his <- Ref.make(Seq.empty)
-    } yield DefaultHttpSession(his, ref, environment, charset, baseUrl, ua, certificate)
+      counter <- Ref.make(0)
+      cookies <- Ref.make(Cookies(Map.empty))
+      history <- Ref.make(Seq.empty)
+    } yield DefaultHttpSession(counter, history, cookies, environment, charset, baseUrl, ua, certificate)
   }
 
   override def url(url: String)(using session: HttpSession): ZLT[HttpRequest] = {
