@@ -744,3 +744,11 @@ case class DefaultHttp() extends Http {
     session.requestGiven(form)
   }
 }
+
+object JsonBody {
+  def from[T](value: T)(using JsonEncoder[T]): ZLT[JsonBody] = {
+    for {
+      ast <- value.ast
+    } yield JsonBody(ast)
+  }
+}
