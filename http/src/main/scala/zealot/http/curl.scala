@@ -193,25 +193,25 @@ object curl {
       }
 
       def parse(url: String, headersFile: File, bodyFile: File, output: String): Task[DefaultHttpResponse] = {
-        //TODO: make this lazy
-        val lines = headersFile.lines.map(_.trim).filterNot(_.isEmpty)
 
-        val start = lines.zipWithIndex.foldLeft(0) { (index, pair) =>
-          if (pair._1.startsWith("HTTP")) pair._2 else index
+        def readLines: Task[Seq[String]] = {
+          ZIO.attempt {
+            headersFile.lines.map(_.trim).filterNot(_.isEmpty).toSeq
+          }
         }
 
-        def readStatusCode: Task[Int] = {
-          lines.slice(start, start + 1).headOption match
-            case None       => ZIO.fail(new Exception("Missing response status"))
-            case Some(head) => ZIO.attempt(head.split(" ")(1).toInt).mapError(e => new Exception("Error parsing response status", e))
+        def readStatusCode(lines: Seq[String]): Task[Int] = {
+          lines.headOption match
+            case Some(head) if head.startsWith("HTTP") => ZIO.attempt(head.split(" ")(1).toInt).mapError(e => Exception("Error parsing response status from header", e))
+            case                                     _ => ZIO.fail(Exception("Missing response status"))
         }
 
-        def readHeaders: Task[Map[String, Set[String]]] = {
+        def readHeaders(lines: Seq[String]): Task[Map[String, Set[String]]] = {
           def toHeader(line: String): (String, String) = {
             val idx = line.indexOf(":")
             (line.substring(0, idx).trim.toLowerCase, line.substring(idx + 1).trim)
           }
-          ZIO.attempt(lines.drop(start + 1).map(_.trim).filterNot(_.isEmpty).map(toHeader).groupBy(_._1).view.mapValues(_.map(_._2).toSet).toMap)
+          ZIO.attempt(lines.drop(1).map(_.trim).filterNot(_.isEmpty).map(toHeader).groupBy(_._1).view.mapValues(_.map(_._2).toSet).toMap)
         }
 
         def readCharset(headers: Map[String, Set[String]]): Task[Option[Charset]] = {
@@ -236,8 +236,9 @@ object curl {
         }
 
         for {
-          code    <- readStatusCode
-          headers <- readHeaders
+          lines   <- readLines
+          code    <- readStatusCode(lines)
+          headers <- readHeaders(lines)
           charset <- readCharset(headers)
           cookies <- parseCookies(headers)
         } yield DefaultHttpResponse(url, code, charset, headers, cookies, bodyFile)
