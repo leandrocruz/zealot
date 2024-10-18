@@ -1,7 +1,5 @@
 package zealot.http
 
-import java.net.URI
-
 object curl {
 
   import better.files.*
@@ -196,7 +194,7 @@ object curl {
 
         def readLines: Task[Seq[String]] = {
           ZIO.attempt {
-            headersFile.lines.map(_.trim).filterNot(_.isEmpty).toSeq
+            headersFile.lines(using HttpUtils.iso).map(_.trim).filterNot(_.isEmpty).toSeq
           }
         }
 
