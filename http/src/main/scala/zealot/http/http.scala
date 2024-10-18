@@ -10,7 +10,7 @@ import zio.json.*
 import zio.json.ast.Json
 
 import java.io.{FileInputStream, InputStream}
-import java.net.{URI, URL}
+import java.net.{URI, URL, URLEncoder}
 import java.nio.charset.Charset
 import java.time.format.DateTimeFormatter
 import java.time.{ZoneId, ZonedDateTime}
@@ -19,7 +19,8 @@ import scala.jdk.CollectionConverters.*
 import scala.util.Try
 
 trait HttpInterceptor {
-  def handle(request: HttpRequest, response: HttpResponse): ZLT[HttpResponse]
+  def handle  (request: HttpRequest, response: HttpResponse): ZLT[HttpResponse] = ZIO.succeed(response)
+  def onFollow(request: HttpRequest, response: HttpResponse): ZLT[HttpResponse] = ZIO.succeed(response)
 }
 
 enum HttpMethod:
@@ -55,6 +56,7 @@ trait HtmlElement {
   def attrOpt(name: String)      : ZLT[Option[String]]
   def text                       : ZLT[String]
   def html                       : ZLT[String]
+  def fnOpt[T](id: String)(fn: HtmlElement => ZLT[T]): ZLT[Option[T]]
 }
 
 trait HtmlForm extends HtmlElement {
@@ -180,6 +182,7 @@ trait Http {
     charset     : Charset,
     baseUrl     : String,
     ua          : String,
+    cookies     : Cookies                   = Cookies.from(Seq.empty),
     proxy       : Option[HttpProxy]         = None,
     certificate : Option[ClientCertificate] = None
   )(using environment: HttpEnvironment) : ZLT[HttpSession]
@@ -316,7 +319,7 @@ case class DefaultHttpSession(
   private def cookiesByDomain(domain: String): ZLT[Set[ResponseCookie]] = {
     for {
       cookies <- ref.get
-    } yield cookies.cache.getOrElse(domain, Set.empty)
+    } yield cookies.cache.view.filterKeys(domain.endsWith).values.toSet.flatten
   }
 
   override def count: ZLT[Int] = counter.getAndUpdate(_ + 1)
@@ -535,6 +538,19 @@ case class DefaultHtmlElement(charset: Charset, inner: Element) extends HtmlElem
   override def text: ZLT[String] = ZIO.attempt(inner.text()).mapError(e => BotError(HtmlDocumentError, "Erro ao extrair o texto do elemento HTML", Some(e)))
 
   override def html: ZLT[String] = ZIO.attempt(inner.html()).mapError(e => BotError(HtmlDocumentError, "Erro ao extrair o html do elemento HTML", Some(e)))
+
+  override def fnOpt[T](id: String)(fn: HtmlElement => ZLT[T]): ZLT[Option[T]] = {
+    for {
+      opt    <- byIdOpt(id)
+      result <- opt match {
+        case None     => ZIO.succeed(None)
+        case Some(el) =>
+          for {
+            result <- fn(el)
+          } yield Some(result)
+      }
+    } yield result
+  }
 }
 
 case class DefaultHttpRequest (
@@ -588,15 +604,16 @@ case class DefaultHttpRequest (
 
     def handleRedirect(response: HttpResponse): ZLT[HttpResponse] = {
 
-      def fixRelativeUrl(location: String): ZLT[String] = {
-        if(location.startsWith("..")) { //FIXME: not sure about this
-          ZIO.attempt(new URI(url).resolve(new URI(location)).normalize().toString).mapError(BotError.of(Outcome.HttpError, s"Error normalizing relative redirect '${location}'"))
-        } else {
-          ZIO.succeed(location)
-        }
-      }
-
       def follow: ZLT[HttpResponse] = {
+
+        def fixRelativeUrl(location: String): ZLT[String] = {
+          if(location.startsWith("..")) { //FIXME: not sure about this
+            ZIO.attempt(new URI(url).resolve(new URI(HttpUtils.sanitize(location))).normalize().toString).mapError(BotError.of(Outcome.HttpError, s"Error normalizing relative redirect '${location}'"))
+          } else {
+            ZIO.succeed(location)
+          }
+        }
+
         for {
           location <- response.redirect
           loc      <- fixRelativeUrl(location)
@@ -605,7 +622,13 @@ case class DefaultHttpRequest (
         } yield res
       }
 
-      if(response.code == 302 && request.followRedirects) follow else ZIO.succeed(response)
+      if(response.code == 302 && request.followRedirects)
+        for {
+          _      <- interceptor.onFollow(this, response)
+          result <- follow
+        } yield result
+
+      else ZIO.succeed(response)
     }
 
     def request = method match
@@ -635,6 +658,8 @@ case class DefaultHtmlForm(element: HtmlElement, method: String, action: String,
   override def text                       : ZLT[String]              = element.text
   override def html                       : ZLT[String]              = element.html
 
+  override def fnOpt[T](id: String)(fn: HtmlElement => ZLT[T]): ZLT[Option[T]] = element.fnOpt(id)(fn)
+
   override def mergeValues(replacement: Map[String, String]): ZLT[HtmlForm] = {
 
 //    def process(inputs: Seq[HtmlElement]): OIO[Unit] = {
@@ -651,8 +676,6 @@ case class DefaultHtmlForm(element: HtmlElement, method: String, action: String,
 
     ZIO.succeed(copy(values = values ++ replacement))
   }
-
-
 }
 
 object HtmlForm {
@@ -705,6 +728,18 @@ object Http {
   def layer: ZLayer[Any, Nothing, DefaultHttp] = ZLayer.fromFunction(DefaultHttp.apply _)
 }
 
+object Cookies {
+  def from(cache: Seq[ResponseCookie]): Cookies = {
+    val init = cache
+      .filter(_.domain.isDefined)
+      .toSet
+      .map(cookie => (cookie.domain.get, cookie))
+      .groupMap(_._1)(_._2)
+
+    Cookies(init)
+  }
+}
+
 case class Cookies(cache: Map[String, Set[ResponseCookie]]) {
   def updateDomain(domain: String, cookie: ResponseCookie, remove: Boolean): Cookies = {
 
@@ -718,10 +753,10 @@ case class Cookies(cache: Map[String, Set[ResponseCookie]]) {
 
 case class DefaultHttp() extends Http {
 
-  override def session(charset: Charset, baseUrl: String, ua: String, proxy: Option[HttpProxy], certificate: Option[ClientCertificate])(using environment: HttpEnvironment): ZLT[HttpSession] = {
+  override def session(charset: Charset, baseUrl: String, ua: String, cookies: Cookies, proxy: Option[HttpProxy], certificate: Option[ClientCertificate])(using environment: HttpEnvironment): ZLT[HttpSession] = {
     for {
       counter <- Ref.make(0)
-      cookies <- Ref.make(Cookies(Map.empty))
+      cookies <- Ref.make(cookies)
       history <- Ref.make(Seq.empty)
     } yield DefaultHttpSession(
       counter,
@@ -752,3 +787,50 @@ object JsonBody {
     } yield JsonBody(ast)
   }
 }
+
+object HttpUtils {
+  val iso  = Charset.forName("iso-8859-1")
+  val utf8 = Charset.forName("utf8")
+
+  def encodePath(path: String) = {
+    path
+      .replace(" ", "%20")
+      .replace("\"", "%22")
+      .replace("<", "%3C")
+      .replace(">", "%3E")
+      .replace("#", "%23")
+      .replace("%", "%25")
+      .replace("|", "%7C")
+  }
+
+  def sanitize(url: String) = {
+
+    def fixQueryString(idx: Int) = {
+      def fix(query: String) =
+      query.split('&').map(_.split('=')).map({
+        case Array(key)        => s"$key="
+        case Array(key, value) => s"$key=${URLEncoder.encode(value, HttpUtils.iso)}"
+      }).mkString("&")
+
+      val query = url.substring(idx + 1)
+      url.substring(0, idx) + "?" + fix(query)
+    }
+
+    val idx = url.indexOf("?")
+    if (idx > 0) fixQueryString(idx) else url
+
+  }
+
+  def sanitizeX(url: String) = {
+    val idx = url.indexOf("?")
+    if (idx > 0) {
+      val path  = url.substring(0, idx)
+      val query = url.substring(idx + 1)
+      encodePath(path) + "?" + URLEncoder.encode(query, HttpUtils.iso)
+    } else {
+      url
+    }
+  }
+
+}
+
