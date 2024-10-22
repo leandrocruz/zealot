@@ -62,8 +62,10 @@ object curl {
 
         def certificate: Seq[String] = {
           request.certificate match
-            case None                             => Seq.empty
-            case Some(PemClientCertificate(file)) => Seq("--cert", file.pathAsString)
+            case None                                           => Seq.empty
+            case Some(PemClientCertificate(file))               => Seq("--cert-type", "PEM", "--cert", file.pathAsString)
+            case Some(Pkcs12ClientCertificate(file, None))      => Seq("--cert-type", "P12", "--cert", file.pathAsString)
+            case Some(Pkcs12ClientCertificate(file, Some(pwd))) => Seq("--cert-type", "P12", "--cert", file.pathAsString + ":" + pwd)
         }
 
         def requestMethod: Seq[String] = {
