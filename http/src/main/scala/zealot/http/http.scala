@@ -104,7 +104,8 @@ case object Http2   extends HttpVersion
 case object Http3   extends HttpVersion
 
 sealed trait ClientCertificate
-case class PemClientCertificate(file: File) extends ClientCertificate
+case class PemClientCertificate(file: File)                              extends ClientCertificate
+case class Pkcs12ClientCertificate(file: File, password: Option[String]) extends ClientCertificate
 
 trait HttpRequest {
   def url             (replace: String)                    : HttpRequest
@@ -300,7 +301,7 @@ case class DefaultHttpSession(
   ref         : Ref[Cookies],
   environment : HttpEnvironment,
   charset     : Charset,
-  baseUrl     : String,
+  baseUrl     : String, //TODO check if baseUrl is a valid, absolute url
   ua          : String,
   proxy       : Option[HttpProxy] = None,
   certificate : Option[ClientCertificate] = None
