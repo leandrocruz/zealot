@@ -141,13 +141,13 @@ trait ExecutableHttpRequest {
   def followRedirects : Boolean
   def certificate     : Option[ClientCertificate]
   def version         : Option[HttpVersion]
-  def execute (expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse]
-  def get     (expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse]
-  def post    (expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse]
+  def execute (expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, logger: HttpLogger, trace: Trace): ZLT[HttpResponse]
+  def get     (expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, logger: HttpLogger, trace: Trace): ZLT[HttpResponse]
+  def post    (expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, logger: HttpLogger, trace: Trace): ZLT[HttpResponse]
 }
 
 trait HttpEngine {
-  def execute(request: ExecutableHttpRequest)(using ctx: HttpContext, session: HttpSession, trace: Trace): ZLT[HttpResponse]
+  def execute(request: ExecutableHttpRequest)(using ctx: HttpContext, session: HttpSession, logger: HttpLogger, trace: Trace): ZLT[HttpResponse]
 }
 
 sealed trait HttpEnvironment
@@ -193,6 +193,10 @@ trait Http {
 }
 
 trait Script
+
+trait HttpLogger {
+  def log(message: => String): Unit
+}
 
 /* IMPL */
 case class ExternalScript(src: String) extends Script
@@ -591,9 +595,9 @@ case class DefaultHttpRequest (
   override def version         (ver: HttpVersion)            : HttpRequest = copy(version         = Some(ver))
 
 
-  override def get    (expectations: Expectation*) (using ctx: HttpContext, session: HttpSession, captcha: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse] = exec(expectations, Some(HttpMethod.Get) )
-  override def post   (expectations: Expectation*) (using ctx: HttpContext, session: HttpSession, captcha: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse] = exec(expectations, Some(HttpMethod.Post))
-  override def execute(expectations: Expectation*) (using ctx: HttpContext, session: HttpSession, captcha: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse] = exec(expectations, None                 )
+  override def get    (expectations: Expectation*) (using ctx: HttpContext, session: HttpSession, captcha: HttpInterceptor, engine: HttpEngine, logger: HttpLogger, trace: Trace): ZLT[HttpResponse] = exec(expectations, Some(HttpMethod.Get) )
+  override def post   (expectations: Expectation*) (using ctx: HttpContext, session: HttpSession, captcha: HttpInterceptor, engine: HttpEngine, logger: HttpLogger, trace: Trace): ZLT[HttpResponse] = exec(expectations, Some(HttpMethod.Post))
+  override def execute(expectations: Expectation*) (using ctx: HttpContext, session: HttpSession, captcha: HttpInterceptor, engine: HttpEngine, logger: HttpLogger, trace: Trace): ZLT[HttpResponse] = exec(expectations, None                 )
 
   override def body[T](body: T)(using enc: JsonEncoder[T]) : ZLT[HttpRequest] = {
     body.toJsonAST match
@@ -601,7 +605,7 @@ case class DefaultHttpRequest (
       case Right(ast) => ZIO.succeed(this.body(JsonBody(ast)))
   }
 
-  private def exec(expectations: Seq[Expectation], method: Option[HttpMethod])(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse] = {
+  private def exec(expectations: Seq[Expectation], method: Option[HttpMethod])(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, logger: HttpLogger, trace: Trace): ZLT[HttpResponse] = {
 
     def handleRedirect(response: HttpResponse): ZLT[HttpResponse] = {
 

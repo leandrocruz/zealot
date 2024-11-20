@@ -25,7 +25,7 @@ object curl {
 
     private val traceRegex = """(.*?)\((.*?):([^:]*?)\)""".r
 
-    override def execute(request: ExecutableHttpRequest)(using ctx: HttpContext, session: HttpSession, trace: Trace): ZLT[HttpResponse] = {
+    override def execute(request: ExecutableHttpRequest)(using ctx: HttpContext, session: HttpSession, logger: HttpLogger, trace: Trace): ZLT[HttpResponse] = {
 
       def onError(msg: String)(cause: Throwable) = BotError(outcome = HttpError, explanation = msg, cause = Some(cause))
 
@@ -307,16 +307,16 @@ object curl {
         }
 
         val params = request.parameters ++ encodedUrlToParamMap(targetUrl).view.mapValues(Set(_))
-        println(s"\n>> [$count - ${request.name.getOrElse("_")}] ${request.method.toString.toUpperCase} ${targetUrl}")
-        request.headers       .toSeq.sortBy(_._1)  .foreach { h => println(s" header > ${h._1}=${h._2.mkString(", ")}") }
-        request.cookies       .toSeq.sortBy(_.name).foreach { c => println(s" cookie > ${c.name}=${c.value}")           }
-        params                .toSeq.sortBy(_._1)  .foreach { p => println(s" param  > ${p._1}=${p._2.mkString(", ")}") }
+        logger.log(s"\n>> [$count - ${request.name.getOrElse("_")}] ${request.method.toString.toUpperCase} ${targetUrl}")
+        request.headers       .toSeq.sortBy(_._1)  .foreach { h => logger.log(s" header > ${h._1}=${h._2.mkString(", ")}") }
+        request.cookies       .toSeq.sortBy(_.name).foreach { c => logger.log(s" cookie > ${c.name}=${c.value}")           }
+        params                .toSeq.sortBy(_._1)  .foreach { p => logger.log(s" param  > ${p._1}=${p._2.mkString(", ")}") }
         if(request.method== HttpMethod.Post) {
           (for {
             (name, values) <- request.fields.toSeq.sortBy(_._1)
             value          <- values
           } yield (name, value)).foreach { case (name, value) =>
-            println(s" data   > $name=$value")
+            logger.log(s" data   > $name=$value")
           }
         }
         ZIO.unit
@@ -325,14 +325,14 @@ object curl {
       def printResponse(now: ZonedDateTime, res: HttpResponse): ZLT[Unit] = {
         if (res.code == 302) {
           val location = res.header("location").getOrElse("???")
-          println(s"<< ${res.code} (location: $location)")
+          logger.log(s"<< ${res.code} (location: $location)")
         } else {
           val ctype = res.header("content-type").getOrElse("???")
-          println(s"<< ${res.code} (content-type: $ctype)")
+          logger.log(s"<< ${res.code} (content-type: $ctype)")
         }
         res.cookies.sortBy(_.name).foreach { c =>
           val remove = c.expires.exists(_.isBefore(now))
-          println(s" cookie < ${if(remove) "-" else "+"} ${c.name}=${c.value} (${c.domain}|${c.path})")
+          logger.log(s" cookie < ${if(remove) "-" else "+"} ${c.name}=${c.value} (${c.domain}|${c.path})")
         }
         ZIO.unit
       }

@@ -1,5 +1,15 @@
 # Zealot
 
+ - Added HttpLogger
+ - Added Outcome values
+   * TwoFactorAuthError
+   * CertificateError
+   * ExpectedAttributeNotFound
+   * ExpectedElementNotFound
+ - Removed Outcome values
+   * AuthIsNotWorkingPleaseRetry
+   * SiteHasChanged
+
 ## Release v0.0.2
 LTS: 22/10/2024
 
