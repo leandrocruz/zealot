@@ -125,6 +125,7 @@ trait HttpRequest {
 
 trait HttpContext {
   def root: File
+  def logger: HttpLogger
 }
 
 trait ExecutableHttpRequest {
@@ -193,6 +194,11 @@ trait Http {
 }
 
 trait Script
+
+trait HttpLogger {
+  def task(message: => String): Task[Unit]
+  def zlt (message: => String): ZLT[Unit]
+}
 
 /* IMPL */
 case class ExternalScript(src: String) extends Script

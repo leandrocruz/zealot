@@ -1,5 +1,19 @@
 # Zealot
 
+## Release v0.1.0
+LTS: 22/11/2024
+
+ - Fixed bug when reading headers/response code with multiple http responses (when using --proxy)
+ - Added HttpContext.logger (HttpLogger)
+ - Added Outcome values
+   * TwoFactorAuthError
+   * CertificateError
+   * ExpectedAttributeNotFound
+   * ExpectedElementNotFound
+ - Removed Outcome values
+   * AuthIsNotWorkingPleaseRetry
+   * SiteHasChanged
+
 ## Release v0.0.2
 LTS: 22/10/2024
 

@@ -7,9 +7,11 @@ import better.files.*
 import File.*
 
 enum Outcome:
-    case AuthIsNotWorkingPleaseRetry
     case CaptchaError
+    case CertificateError
     case CriticalError
+    case ExpectedAttributeNotFound
+    case ExpectedElementNotFound
     case InvalidCredentials
     case HtmlDocumentError
     case HttpError
@@ -17,6 +19,7 @@ enum Outcome:
     case SiteHasChanged
     case SiteError
     case Timeout
+    case TwoFactorAuthError
     case UnexpectedError
 
 sealed trait BotResult
