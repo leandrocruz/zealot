@@ -1,6 +1,7 @@
 # Zealot
 
- - Added HttpLogger
+ - Fixed bug when reading headers/response code with multiple http responses (when using --proxy)
+ - Added HttpContext.logger (HttpLogger)
  - Added Outcome values
    * TwoFactorAuthError
    * CertificateError

@@ -25,7 +25,7 @@ object curl {
 
     private val traceRegex = """(.*?)\((.*?):([^:]*?)\)""".r
 
-    override def execute(request: ExecutableHttpRequest)(using ctx: HttpContext, session: HttpSession, logger: HttpLogger, trace: Trace): ZLT[HttpResponse] = {
+    override def execute(request: ExecutableHttpRequest)(using ctx: HttpContext, session: HttpSession, trace: Trace): ZLT[HttpResponse] = {
 
       def onError(msg: String)(cause: Throwable) = BotError(outcome = HttpError, explanation = msg, cause = Some(cause))
 
@@ -196,7 +196,7 @@ object curl {
 
         def readLines: Task[Seq[String]] = {
           ZIO.attempt {
-            headersFile.lines(using HttpUtils.iso).map(_.trim).filterNot(_.isEmpty).toSeq
+            headersFile.lines(using HttpUtils.iso).toSeq
           }
         }
 
@@ -208,6 +208,7 @@ object curl {
 
         def readHeaders(lines: Seq[String]): Task[Map[String, Set[String]]] = {
           def toHeader(line: String): (String, String) = {
+            //println(s"Parsing Header '${line}'")
             val idx = line.indexOf(":")
             (line.substring(0, idx).trim.toLowerCase, line.substring(idx + 1).trim)
           }
@@ -235,10 +236,23 @@ object curl {
           ZIO.foreach(values.toSeq)(toCookie)
         }
 
+        def dedup(lines: Seq[String]): Task[Seq[String]] = {
+          //It might be the case the we have multiple responses in the same file, specially when calling curl with '--proxy'
+          //Drop the first response and keep the second
+          ZIO.attempt {
+            val (s1, s2) = lines.map(_.trim).span(_.nonEmpty)
+            (s1.filterNot(_.isEmpty), s2.filterNot(_.isEmpty)) match
+              case (Nil, Nil) => Seq.empty
+              case (seq, Nil) => seq
+              case (_, seq)   => seq
+          }
+        }
+
         for {
           lines   <- readLines
-          code    <- readStatusCode(lines)
-          headers <- readHeaders(lines)
+          deduped <- dedup(lines)
+          code    <- readStatusCode(deduped)
+          headers <- readHeaders(deduped)
           charset <- readCharset(headers)
           cookies <- parseCookies(headers)
         } yield DefaultHttpResponse(url, code, charset, headers, cookies, bodyFile)
@@ -307,34 +321,37 @@ object curl {
         }
 
         val params = request.parameters ++ encodedUrlToParamMap(targetUrl).view.mapValues(Set(_))
-        logger.log(s"\n>> [$count - ${request.name.getOrElse("_")}] ${request.method.toString.toUpperCase} ${targetUrl}")
-        request.headers       .toSeq.sortBy(_._1)  .foreach { h => logger.log(s" header > ${h._1}=${h._2.mkString(", ")}") }
-        request.cookies       .toSeq.sortBy(_.name).foreach { c => logger.log(s" cookie > ${c.name}=${c.value}")           }
-        params                .toSeq.sortBy(_._1)  .foreach { p => logger.log(s" param  > ${p._1}=${p._2.mkString(", ")}") }
-        if(request.method== HttpMethod.Post) {
-          (for {
+
+        val data = if(request.method != HttpMethod.Post) Seq.empty else {
+          for {
             (name, values) <- request.fields.toSeq.sortBy(_._1)
             value          <- values
-          } yield (name, value)).foreach { case (name, value) =>
-            logger.log(s" data   > $name=$value")
-          }
+          } yield (name, value)
         }
-        ZIO.unit
+
+        for
+          _ <-                                                               ctx.logger.zlt(s"\n>> [$count - ${request.name.getOrElse("_")}] ${request.method.toString.toUpperCase} ${targetUrl}")
+          _ <- ZIO.foreach(request.headers.toSeq.sortBy(_._1))   { h      => ctx.logger.zlt(s" header > ${h._1}=${h._2.mkString(", ")}") }
+          _ <- ZIO.foreach(request.cookies.toSeq.sortBy(_.name)) { c      => ctx.logger.zlt(s" cookie > ${c.name}=${c.value}")           }
+          _ <- ZIO.foreach(params         .toSeq.sortBy(_._1))   { p      => ctx.logger.zlt(s" param  > ${p._1}=${p._2.mkString(", ")}") }
+          _ <- ZIO.foreach(data)                                 { (n, v) => ctx.logger.zlt(s" data   > $n=$v")                   }
+        yield ()
       }
 
       def printResponse(now: ZonedDateTime, res: HttpResponse): ZLT[Unit] = {
-        if (res.code == 302) {
-          val location = res.header("location").getOrElse("???")
-          logger.log(s"<< ${res.code} (location: $location)")
-        } else {
-          val ctype = res.header("content-type").getOrElse("???")
-          logger.log(s"<< ${res.code} (content-type: $ctype)")
-        }
-        res.cookies.sortBy(_.name).foreach { c =>
+
+        val location = res.header("location")    .getOrElse("???")
+        val ctype    = res.header("content-type").getOrElse("???")
+
+        def printCookie(c: ResponseCookie) = {
           val remove = c.expires.exists(_.isBefore(now))
-          logger.log(s" cookie < ${if(remove) "-" else "+"} ${c.name}=${c.value} (${c.domain}|${c.path})")
+          ctx.logger.zlt(s" cookie < ${if(remove) "-" else "+"} ${c.name}=${c.value} (${c.domain}|${c.path})")
         }
-        ZIO.unit
+
+        for
+          _ <- if (res.code == 302) ctx.logger.zlt(s"<< ${res.code} (location: $location)") else ctx.logger.zlt(s"<< ${res.code} (content-type: $ctype)")
+          _ <- ZIO.foreach(res.cookies.sortBy(_.name)) { printCookie }
+        yield ()
       }
 
       val tag = request.name.map(name => "-"+name).getOrElse("")
