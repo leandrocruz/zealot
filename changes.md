@@ -1,5 +1,10 @@
 # Zealot
 
+## Release v0.1.1
+LTS: 25/11/2024
+ 
+ - Keep HttpVersion when following http redirects 
+
 ## Release v0.1.0
 LTS: 22/11/2024
 
