@@ -170,9 +170,9 @@ trait HttpSession {
   def ua          : String
   def certificate : Option[ClientCertificate]
   def proxy       : Option[HttpProxy]
-  def update(request: ExecutableHttpRequest, response: HttpResponse): ZLT[Unit]
-  def requestGiven(url: String)    : ZLT[HttpRequest]
-  def requestGiven(form: HtmlForm) : ZLT[HttpRequest]
+  def update(request: ExecutableHttpRequest, response: HttpResponse) : ZLT[Unit]
+  def requestGiven(url: String   , version: Option[HttpVersion])     : ZLT[HttpRequest]
+  def requestGiven(form: HtmlForm, version: Option[HttpVersion])     : ZLT[HttpRequest]
   def rebase(baseUrl: String)      : ZLT[HttpSession]
   def cookies                      : ZLT[Cookies]
   def cookiesGiven(url: String)    : ZLT[Seq[ResponseCookie]]
@@ -357,7 +357,7 @@ case class DefaultHttpSession(
     update.mapError(e => BotError(UnexpectedError, "Erro atualizando estado interno do navegador", Some(e)))
   }
 
-  override def requestGiven(url: String) = {
+  override def requestGiven(url: String, version: Option[HttpVersion]) = {
     for {
       domain  <- domainGiven(url)
       cookies <- cookiesByDomain(domain)
@@ -365,11 +365,12 @@ case class DefaultHttpSession(
       url         = url,
       ua          = ua,
       cookies     = cookies.map(_.toRequest),
-      certificate = certificate
+      certificate = certificate,
+      version     = version
     )
   }
 
-  override def requestGiven(form: HtmlForm) = {
+  override def requestGiven(form: HtmlForm, version: Option[HttpVersion]) = {
     def build = {
 
       val method = form.method.toLowerCase() match {
@@ -387,7 +388,8 @@ case class DefaultHttpSession(
         method      = method.getOrElse(HttpMethod.Get),
         fields      = form.values.view.mapValues(Set(_)).toMap,
         cookies     = cookies.map(_.toRequest),
-        certificate = certificate
+        certificate = certificate,
+        version     = version
       )
     }
 
@@ -624,7 +626,7 @@ case class DefaultHttpRequest (
         for {
           location <- response.redirect
           loc      <- fixRelativeUrl(location)
-          req      <- session.requestGiven(loc)
+          req      <- session.requestGiven(loc, version)
           res      <- req.named(s"FR-${name.getOrElse("_")}").get()
         } yield res
       }
@@ -779,11 +781,11 @@ case class DefaultHttp() extends Http {
   }
 
   override def url(url: String)(using session: HttpSession): ZLT[HttpRequest] = {
-    session.requestGiven(url)
+    session.requestGiven(url, None)
   }
 
   override def requestGiven(form: HtmlForm)(using session: HttpSession): ZLT[HttpRequest] = {
-    session.requestGiven(form)
+    session.requestGiven(form, None)
   }
 }
 
