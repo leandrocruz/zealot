@@ -1,5 +1,7 @@
 # Zealot
 
+ - Ignoring '.' at Cookies.from
+
 ## Release v0.1.1
 LTS: 25/11/2024
  

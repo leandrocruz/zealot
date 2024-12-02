@@ -739,10 +739,13 @@ object Http {
 
 object Cookies {
   def from(cache: Seq[ResponseCookie]): Cookies = {
+
+    def domainGiven(name: String): String = if(name.startsWith(".")) name.drop(1) else name
+
     val init = cache
       .filter(_.domain.isDefined)
       .toSet
-      .map(cookie => (cookie.domain.get, cookie))
+      .map(cookie => (domainGiven(cookie.domain.get), cookie))
       .groupMap(_._1)(_._2)
 
     Cookies(init)
