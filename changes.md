@@ -1,6 +1,10 @@
 # Zealot
 
+## Release v0.1.2
+LTS: 03/12/2024
+
  - Ignoring '.' at Cookies.from
+ - Added Cookies.all
 
 ## Release v0.1.1
 LTS: 25/11/2024

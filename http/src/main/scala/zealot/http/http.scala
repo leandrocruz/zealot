@@ -761,6 +761,9 @@ case class Cookies(cache: Map[String, Set[ResponseCookie]]) {
       case None if !remove     => copy(cache = cache + (domain -> Set(cookie)))
       case _ => this
   }
+
+  def all: Set[ResponseCookie] = cache.view.values.toSet.flatten
+
 }
 
 case class DefaultHttp() extends Http {
