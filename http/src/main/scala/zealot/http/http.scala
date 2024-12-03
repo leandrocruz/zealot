@@ -739,10 +739,13 @@ object Http {
 
 object Cookies {
   def from(cache: Seq[ResponseCookie]): Cookies = {
+
+    def domainGiven(name: String): String = if(name.startsWith(".")) name.drop(1) else name
+
     val init = cache
       .filter(_.domain.isDefined)
       .toSet
-      .map(cookie => (cookie.domain.get, cookie))
+      .map(cookie => (domainGiven(cookie.domain.get), cookie))
       .groupMap(_._1)(_._2)
 
     Cookies(init)
@@ -758,6 +761,9 @@ case class Cookies(cache: Map[String, Set[ResponseCookie]]) {
       case None if !remove     => copy(cache = cache + (domain -> Set(cookie)))
       case _ => this
   }
+
+  def all: Set[ResponseCookie] = cache.view.values.toSet.flatten
+
 }
 
 case class DefaultHttp() extends Http {
