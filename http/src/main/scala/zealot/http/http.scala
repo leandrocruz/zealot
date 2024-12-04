@@ -631,7 +631,7 @@ case class DefaultHttpRequest (
         } yield res
       }
 
-      if(response.code == 302 && request.followRedirects)
+      if(request.followRedirects && response.code >= 300 && response.code < 400)
         for {
           _      <- interceptor.onFollow(this, response)
           result <- follow

@@ -1,5 +1,10 @@
 # Zealot
 
+## Release v0.1.3
+LTS: 04/12/2024
+
+ - Follow redirects when response code is between 300 and 400
+
 ## Release v0.1.2
 LTS: 03/12/2024
 
