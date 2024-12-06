@@ -616,11 +616,17 @@ case class DefaultHttpRequest (
       def follow: ZLT[HttpResponse] = {
 
         def fixRelativeUrl(location: String): ZLT[String] = {
-          if(location.startsWith("..")) { //FIXME: not sure about this
-            ZIO.attempt(new URI(url).resolve(new URI(HttpUtils.sanitize(location))).normalize().toString).mapError(BotError.of(Outcome.HttpError, s"Error normalizing relative redirect '${location}'"))
-          } else {
-            ZIO.succeed(location)
+
+          def handleRelative = {
+            ZIO
+              .attempt(new URI(url).resolve(new URI(HttpUtils.sanitize(location))).normalize().toString)
+              .mapError(BotError.of(Outcome.HttpError, s"Error normalizing relative redirect '${location}'"))
           }
+
+          (location.startsWith(".."), location.startsWith("/")) match
+            case (true, _) => handleRelative
+            case (_, true) => handleRelative
+            case _         => ZIO.succeed(location)
         }
 
         for {

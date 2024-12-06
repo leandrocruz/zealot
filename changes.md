@@ -1,5 +1,10 @@
 # Zealot
 
+## Release v0.1.4
+LTS: 06/12/2024
+
+ - Handling redirects for "relative" locations
+
 ## Release v0.1.3
 LTS: 04/12/2024
 
