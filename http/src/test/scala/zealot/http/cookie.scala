@@ -17,10 +17,38 @@ class CookieTest extends AnyFlatSpec with should.Matchers {
     }
   }
 
+  it should "parse NAME" in {
+    test("NAME") { cookie =>
+      cookie.name shouldBe "NAME"
+      cookie.value shouldBe ""
+    }
+  }
+
   it should "parse NAME=VALUE" in {
     test("NAME=VALUE") { cookie =>
       cookie.name  shouldBe "NAME"
       cookie.value shouldBe "VALUE"
+    }
+  }
+
+  it should "parse NAME=" in {
+    test("NAME=") { cookie =>
+      cookie.name shouldBe "NAME"
+      cookie.value shouldBe ""
+    }
+  }
+
+  it should "parse NAME=VALUE=" in {
+    test("NAME=VALUE=") { cookie =>
+      cookie.name shouldBe "NAME"
+      cookie.value shouldBe "VALUE="
+    }
+  }
+
+  it should "parse NAME=VALUE==" in {
+    test("NAME=VALUE==") { cookie =>
+      cookie.name shouldBe "NAME"
+      cookie.value shouldBe "VALUE=="
     }
   }
 

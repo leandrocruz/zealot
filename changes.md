@@ -1,5 +1,10 @@
 # Zealot
 
+## Release v0.1.5
+LTS: 11/12/2024
+
+ - Fixed cookie parsing from values like `name=value==`
+
 ## Release v0.1.4
 LTS: 06/12/2024
 
