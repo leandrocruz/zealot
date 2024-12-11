@@ -257,11 +257,10 @@ object DefaultCookie {
     }
 
     def pairGiven(str: String) = {
-      str.split("=") match {
-        case Array(name)         => (name, "")
-        case Array(name, value)  => (name, value)
-        case Array(name, v1, v2) => (name, v1 + "=" + v2)
-        case _                   => throw new Exception(s"Can't extract name/value pair from '$str'")
+      str.split("=", 2) match {
+        case Array(name)        => (name, "")
+        case Array(name, value) => (name, value)
+        case _                  => throw new Exception(s"Can't extract name/value pair from '$str'")
       }
     }
 
