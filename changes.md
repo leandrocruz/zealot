@@ -1,5 +1,8 @@
 # Zealot
 
+## Release v0.2.0
+LTS: 12/12/2024
+
  - Creating new sessions with a collection of predefined headers 
  - Added HttpRequest.removeHeader
 
