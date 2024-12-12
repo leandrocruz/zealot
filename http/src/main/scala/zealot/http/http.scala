@@ -110,6 +110,7 @@ case class Pkcs12ClientCertificate(file: File, password: Option[String]) extends
 trait HttpRequest {
   def url             (replace: String)                    : HttpRequest
   def header          (name: String, value: String)        : HttpRequest
+  def removeHeader    (name: String)                       : HttpRequest
   def param           (name: String, value: String)        : HttpRequest
   def cookie          (name: String, value: String)        : HttpRequest
   def cookies         (values: Map[String, String])        : HttpRequest
@@ -184,6 +185,7 @@ trait Http {
     charset     : Charset,
     baseUrl     : String,
     ua          : String,
+    headers     : Map[String, Set[String]]  = Map.empty,
     cookies     : Cookies                   = Cookies.from(Seq.empty),
     proxy       : Option[HttpProxy]         = None,
     certificate : Option[ClientCertificate] = None
@@ -308,7 +310,8 @@ case class DefaultHttpSession(
   charset     : Charset,
   baseUrl     : String, //TODO check if baseUrl is a valid, absolute url
   ua          : String,
-  proxy       : Option[HttpProxy] = None,
+  headers     : Map[String, Set[String]],
+  proxy       : Option[HttpProxy]         = None,
   certificate : Option[ClientCertificate] = None
 ) extends HttpSession {
 
@@ -363,6 +366,7 @@ case class DefaultHttpSession(
     } yield DefaultHttpRequest(
       url         = url,
       ua          = ua,
+      headers     = headers,
       cookies     = cookies.map(_.toRequest),
       certificate = certificate,
       version     = version
@@ -576,10 +580,10 @@ case class DefaultHttpRequest (
   version         : Option[HttpVersion]       = None,
   body            : HttpBody                  = NoBody) extends HttpRequest, ExecutableHttpRequest {
 
-  private def update(map: Map[String, Set[String]])(name: String, value: String) = {
+  private def update(map: Map[String, Set[String]])(name: String, value: Option[String]): Map[String, Set[String]] = {
     map.updatedWith(name) {
-      case Some(values) => Some(values + value)
-      case None         => Some(Set(value))
+      case Some(values) => value.map(v => values + v)
+      case None         => value.map(v => Set(v))
     }
   }
 
@@ -587,9 +591,10 @@ case class DefaultHttpRequest (
   override def url(replace: String): HttpRequest = copy(url = replace)
 
   override def body            (body: HttpBody)              : HttpRequest = copy(body            = body)
-  override def header          (name: String, value: String) : HttpRequest = copy(headers         = update(headers)   (name, value))
-  override def param           (name: String, value: String) : HttpRequest = copy(parameters      = update(parameters)(name, value))
-  override def field           (name: String, value: String) : HttpRequest = copy(fields          = update(fields)    (name, value))
+  override def header          (name: String, value: String) : HttpRequest = copy(headers         = update(headers)   (name, Some(value)))
+  override def removeHeader    (name: String)                : HttpRequest = copy(headers         = update(headers)   (name, None      ))
+  override def param           (name: String, value: String) : HttpRequest = copy(parameters      = update(parameters)(name, Some(value)))
+  override def field           (name: String, value: String) : HttpRequest = copy(fields          = update(fields)    (name, Some(value)))
   override def cookie          (name: String, value: String) : HttpRequest = copy(cookies         = cookies + DefaultRequestCookie(name, value))
   override def cookies         (values: Map[String, String]) : HttpRequest = copy(cookies         = cookies ++ values.map(DefaultRequestCookie(_, _)))
   override def formEncoding    (formEncoding: FormEncoding)  : HttpRequest = copy(formEncoding    = formEncoding)
@@ -773,7 +778,7 @@ case class Cookies(cache: Map[String, Set[ResponseCookie]]) {
 
 case class DefaultHttp() extends Http {
 
-  override def session(charset: Charset, baseUrl: String, ua: String, cookies: Cookies, proxy: Option[HttpProxy], certificate: Option[ClientCertificate])(using environment: HttpEnvironment): ZLT[HttpSession] = {
+  override def session(charset: Charset, baseUrl: String, ua: String, headers: Map[String, Set[String]], cookies: Cookies, proxy: Option[HttpProxy], certificate: Option[ClientCertificate])(using environment: HttpEnvironment): ZLT[HttpSession] = {
     for {
       counter <- Ref.make(0)
       cookies <- Ref.make(cookies)
@@ -786,6 +791,7 @@ case class DefaultHttp() extends Http {
       charset,
       baseUrl,
       ua,
+      headers,
       proxy,
       certificate
     )
