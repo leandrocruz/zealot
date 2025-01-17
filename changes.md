@@ -1,5 +1,10 @@
 # Zealot
 
+## Release v0.2.1
+LTS: 17/01/2025
+ 
+ - Fixed date parsing for cookies for dates with only 2 numbers to represent years (like Sun, 19-Jan-25 15:00:18 GMT)
+
 ## Release v0.2.0
 LTS: 12/12/2024
 
