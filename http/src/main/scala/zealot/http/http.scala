@@ -229,9 +229,11 @@ object DefaultCookie {
   /*
     Wed, 21 Oct 2015 07:28:00 GMT
     Thu, 01-Jan-1970 00:00:10 GMT
+    Thu, 01-Jan-25 00:00:10 GMT
   */
   private val re1 = s"[a-zA-Z]{3}, (\\d{2}) ([a-zA-Z]{3}) (\\d{4}) (\\d{2}):(\\d{2}):(\\d{2}) GMT".r
   private val re2 = s"[a-zA-Z]{3}, (\\d{2})\\-([a-zA-Z]{3})\\-(\\d{4}) (\\d{2}):(\\d{2}):(\\d{2}) GMT".r
+  private val re3 = s"[a-zA-Z]{3}, (\\d{2})\\-([a-zA-Z]{3})\\-(\\d{2}) (\\d{2}):(\\d{2}):(\\d{2}) GMT".r
 
   def from(url: String, str0: String, dropDoubleQuotes: Boolean = true): Try[ResponseCookie] = Try {
 
@@ -252,9 +254,11 @@ object DefaultCookie {
           case "Nov" => 11
           case "Dec" => 12
       }
+
       value match
-        case re1(day, month, year, hour, minute, second) => ZonedDateTime.of(year.toInt, toMonth(month), day.toInt, hour.toInt, minute.toInt, second.toInt, 0, ZoneId.of("Z"))
-        case re2(day, month, year, hour, minute, second) => ZonedDateTime.of(year.toInt, toMonth(month), day.toInt, hour.toInt, minute.toInt, second.toInt, 0, ZoneId.of("Z"))
+        case re1(day, month, year, hour, minute, second) => ZonedDateTime.of(year.toInt       , toMonth(month), day.toInt, hour.toInt, minute.toInt, second.toInt, 0, ZoneId.of("Z"))
+        case re2(day, month, year, hour, minute, second) => ZonedDateTime.of(year.toInt       , toMonth(month), day.toInt, hour.toInt, minute.toInt, second.toInt, 0, ZoneId.of("Z"))
+        case re3(day, month, year, hour, minute, second) => ZonedDateTime.of(2000 + year.toInt, toMonth(month), day.toInt, hour.toInt, minute.toInt, second.toInt, 0, ZoneId.of("Z"))
         case _                                           => throw new Exception(s"Unparsable date '$value'")
     }
 
