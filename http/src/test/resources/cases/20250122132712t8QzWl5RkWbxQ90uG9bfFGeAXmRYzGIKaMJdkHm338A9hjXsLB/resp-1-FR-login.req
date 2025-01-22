@@ -1,0 +1,22 @@
+{"location": "presto.handler.EprocCP.login", "file":"eproc.scala", "line": 184}
+curl \
+-k \
+-X \
+GET \
+--proxy \
+192.168.0.1:10001 \
+--cert-type \
+PEM \
+--cert \
+/tmp/cert-5232426729296561585.pem \
+--cookie \
+PHPSESSID=smivtcvrmgrbpb2rbnsj5v6i5r \
+--cookie \
+presto-credential-hash=5f7e0e28-f6bb-4511-8062-6a687a29c68d \
+-A \
+Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 \
+-D \
+/opt/presto/service/shared/login/20250122132712t8QzWl5RkWbxQ90uG9bfFGeAXmRYzGIKaMJdkHm338A9hjXsLB/resp-1-FR-login.headers \
+-o \
+/opt/presto/service/shared/login/20250122132712t8QzWl5RkWbxQ90uG9bfFGeAXmRYzGIKaMJdkHm338A9hjXsLB/resp-1-FR-login.res \
+https://eproc.trf4.jus.br/eproc2trf4/lib/priv/login_cert.php?acao_origem=

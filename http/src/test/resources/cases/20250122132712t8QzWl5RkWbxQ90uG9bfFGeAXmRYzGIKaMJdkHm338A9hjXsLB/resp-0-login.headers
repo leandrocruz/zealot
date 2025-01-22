@@ -1,0 +1,17 @@
+HTTP/1.1 200 Connection established
+
+HTTP/2 302 
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+x-content-type-options: nosniff
+x-xss-protection: 1; mode=block
+x-frame-options: SAMEORIGIN
+date: Wed, 22 Jan 2025 16:27:14 GMT
+server: Apache/2.4.62 (Red Hat Enterprise Linux) OpenSSL/3.2.2 mod_fcgid/2.3.9
+x-powered-by: PHP/8.2.13
+expires: Thu, 19 Nov 1981 08:52:00 GMT
+cache-control: no-store, no-cache, must-revalidate
+pragma: no-cache
+location: lib/priv/login_cert.php?acao_origem=
+content-length: 0
+content-type: text/html; charset=ISO-8859-1
+
