@@ -18,6 +18,81 @@ object curl {
     def layer = ZLayer.succeed { CurlHttpEngine() }
   }
 
+  object ResponseParser {
+    def parse(url: String, headersFile: File, bodyFile: File, output: String): Task[DefaultHttpResponse] = {
+
+      def readLines: Task[Seq[String]] = {
+        ZIO.attempt {
+          headersFile.lines(using HttpUtils.iso).toSeq
+        }
+      }
+
+      def readStatusCode(lines: Seq[String]): Task[Int] = {
+        lines.headOption match
+          case Some(head) if head.startsWith("HTTP") => ZIO.attempt(head.split(" ")(1).toInt).mapError(e => Exception("Error parsing response status from header", e))
+          case                                     _ => ZIO.fail(Exception("Missing response status"))
+      }
+
+      def readHeaders(lines: Seq[String]): Task[Map[String, Set[String]]] = {
+        def toHeader(line: String): (String, String) = {
+          //println(s"Parsing Header '${line}'")
+          val idx = line.indexOf(":")
+          (line.substring(0, idx).trim.toLowerCase, line.substring(idx + 1).trim)
+        }
+        ZIO.attempt(lines.drop(1).map(_.trim).filterNot(_.isEmpty).map(toHeader).groupBy(_._1).view.mapValues(_.map(_._2).toSet).toMap)
+      }
+
+      def readCharset(headers: Map[String, Set[String]]): Task[Option[Charset]] = {
+        headers.get("content-type").flatMap(_.headOption).map(_.split(";")) match
+          case Some(Array(_, charset)) if charset.startsWith("charset=") =>
+            ZIO.attempt(Charset.forName(charset.trim.substring("charset=".length))).map(Some(_))
+          case _ =>
+            ZIO.succeed(None)
+      }
+
+      def parseCookies(headers: Map[String, Set[String]]): Task[Seq[ResponseCookie]] = {
+
+        def toCookie(value: String): Task[ResponseCookie] = ZIO.fromTry(DefaultCookie.from(url, value))
+
+        val values = headers filter {
+          case (name, _) => name.equalsIgnoreCase("set-cookie")
+        } flatMap {
+          case (_, values) => values
+        }
+
+        ZIO.foreach(values.toSeq)(toCookie)
+      }
+
+      def dedup(lines: Seq[String]): Task[Seq[String]] = {
+        //It might be the case the we have multiple responses in the same file, specially when calling curl with '--proxy'
+        //Drop the first response and keep the second
+        ZIO.attempt {
+          val (s1, s2) = lines.map(_.trim).span(_.nonEmpty)
+          (s1.filterNot(_.isEmpty), s2.filterNot(_.isEmpty)) match
+            case (Nil, Nil) => Seq.empty
+            case (seq, Nil) => seq
+            case (_, seq)   => seq
+        }
+      }
+
+      def normalize(lines: Seq[String]): Task[Seq[String]] = {
+        ZIO.attempt {
+          val (codes, headers) = lines.map(_.trim).filterNot(_.isEmpty).span(_.startsWith("HTTP"))
+          codes.lastOption.toSeq ++ headers
+        }
+      }
+
+      for {
+        lines   <- readLines
+        deduped <- normalize(lines)
+        code    <- readStatusCode(deduped)
+        headers <- readHeaders(deduped)
+        charset <- readCharset(headers)
+        cookies <- parseCookies(headers)
+      } yield DefaultHttpResponse(url, code, charset, headers, cookies, bodyFile)
+    }
+  }
+
   /*
    * See https://ec.haxx.se/index.html
    */
@@ -192,72 +267,6 @@ object curl {
           case Failure(error) => ZIO.fail(new Exception(s"Error running command '$cmd' at '${ctx.root}'", error))
       }
 
-      def parse(url: String, headersFile: File, bodyFile: File, output: String): Task[DefaultHttpResponse] = {
-
-        def readLines: Task[Seq[String]] = {
-          ZIO.attempt {
-            headersFile.lines(using HttpUtils.iso).toSeq
-          }
-        }
-
-        def readStatusCode(lines: Seq[String]): Task[Int] = {
-          lines.headOption match
-            case Some(head) if head.startsWith("HTTP") => ZIO.attempt(head.split(" ")(1).toInt).mapError(e => Exception("Error parsing response status from header", e))
-            case                                     _ => ZIO.fail(Exception("Missing response status"))
-        }
-
-        def readHeaders(lines: Seq[String]): Task[Map[String, Set[String]]] = {
-          def toHeader(line: String): (String, String) = {
-            //println(s"Parsing Header '${line}'")
-            val idx = line.indexOf(":")
-            (line.substring(0, idx).trim.toLowerCase, line.substring(idx + 1).trim)
-          }
-          ZIO.attempt(lines.drop(1).map(_.trim).filterNot(_.isEmpty).map(toHeader).groupBy(_._1).view.mapValues(_.map(_._2).toSet).toMap)
-        }
-
-        def readCharset(headers: Map[String, Set[String]]): Task[Option[Charset]] = {
-          headers.get("content-type").flatMap(_.headOption).map(_.split(";")) match
-            case Some(Array(_, charset)) if charset.startsWith("charset=") =>
-              ZIO.attempt(Charset.forName(charset.trim.substring("charset=".length))).map(Some(_))
-            case _ =>
-              ZIO.succeed(None)
-        }
-
-        def parseCookies(headers: Map[String, Set[String]]): Task[Seq[ResponseCookie]] = {
-
-          def toCookie(value: String): Task[ResponseCookie] = ZIO.fromTry(DefaultCookie.from(url, value))
-
-          val values = headers filter {
-            case (name, _) => name.equalsIgnoreCase("set-cookie")
-          } flatMap {
-            case (_, values) => values
-          }
-
-          ZIO.foreach(values.toSeq)(toCookie)
-        }
-
-        def dedup(lines: Seq[String]): Task[Seq[String]] = {
-          //It might be the case the we have multiple responses in the same file, specially when calling curl with '--proxy'
-          //Drop the first response and keep the second
-          ZIO.attempt {
-            val (s1, s2) = lines.map(_.trim).span(_.nonEmpty)
-            (s1.filterNot(_.isEmpty), s2.filterNot(_.isEmpty)) match
-              case (Nil, Nil) => Seq.empty
-              case (seq, Nil) => seq
-              case (_, seq)   => seq
-          }
-        }
-
-        for {
-          lines   <- readLines
-          deduped <- dedup(lines)
-          code    <- readStatusCode(deduped)
-          headers <- readHeaders(deduped)
-          charset <- readCharset(headers)
-          cookies <- parseCookies(headers)
-        } yield DefaultHttpResponse(url, code, charset, headers, cookies, bodyFile)
-      }
-
       def ensureFile(name: String): Task[File] = {
         val target = ctx.root / name
         ZIO.attempt(target.touch())
@@ -358,17 +367,17 @@ object curl {
       val url = getUrl
       for {
         count        <- session.count
-        reqFile      <- ensureFile(name = s"resp-${count}${tag}.req")     .mapError(onError("Error creating request file"     ))
-        resFile      <- ensureFile(name = s"resp-${count}${tag}.res")     .mapError(onError("Error creating response file"    ))
-        headersFile  <- ensureFile(name = s"resp-${count}${tag}.headers") .mapError(onError("Error creating headers file"     ))
+        reqFile      <- ensureFile(name = s"resp-${count}${tag}.req")           .mapError(onError("Error creating request file"     ))
+        resFile      <- ensureFile(name = s"resp-${count}${tag}.res")           .mapError(onError("Error creating response file"    ))
+        headersFile  <- ensureFile(name = s"resp-${count}${tag}.headers")       .mapError(onError("Error creating headers file"     ))
         _            <- printRequest(count)
-        cmd          <- build(count, url, headersFile, resFile)           .mapError(onError("Error building curl command line"))
-        _            <- dumpRequest(cmd, reqFile)                         .mapError(onError("Error dumping request"           ))
-        output       <- run(cmd)                                          .mapError(onError("Error executing curl"            ))
-        response     <- parse(url, headersFile, resFile, output)          .mapError(onError("Error parsing curl response"     ))
+        cmd          <- build(count, url, headersFile, resFile)                 .mapError(onError("Error building curl command line"))
+        _            <- dumpRequest(cmd, reqFile)                               .mapError(onError("Error dumping request"           ))
+        output       <- run(cmd)                                                .mapError(onError("Error executing curl"            ))
+        response     <- ResponseParser.parse(url, headersFile, resFile, output) .mapError(onError("Error parsing curl response"     ))
         now          <- Clock.currentDateTime
         _            <- printResponse(now.toZonedDateTime, response)
-        renamed      <- renameResponseFile(response, resFile)             .mapError(onError("Error renaming response file"    ))
+        renamed      <- renameResponseFile(response, resFile)                   .mapError(onError("Error renaming response file"    ))
       } yield renamed
     }
   }

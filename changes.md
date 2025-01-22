@@ -1,5 +1,12 @@
 # Zealot
 
+## Release v0.2.2
+LTS: 22/01/2025
+
+ - Fixed header parsing when header file contains multiple lines with http responses
+ - Refactored response parser code into a new object called ResponseParser
+ - Added CurlTest
+
 ## Release v0.2.1
 LTS: 17/01/2025
  
