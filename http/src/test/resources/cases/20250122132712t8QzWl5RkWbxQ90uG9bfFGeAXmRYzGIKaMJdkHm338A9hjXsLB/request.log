@@ -1,0 +1,73 @@
+2025-01-22 13:27:12,911 INFO  ZScheduler-Worker-1    | Calling 'https://morbid.oystr.com.br/v1/verify'
+2025-01-22 13:27:12,931 INFO  ZScheduler-Worker-2    | Calling 'https://morbid.oystr.com.br/v1/user/pin/validate'
+2025-01-22 13:27:12,959 INFO  ZScheduler-Worker-3    | Loading certificate '5f7e0e28-f6bb-4511-8062-6a687a29c68d'
+2025-01-22 13:27:12,993 INFO  ZScheduler-Worker-2    | Url          : https://eproc.trf4.jus.br/eproc2trf4/index.php
+2025-01-22 13:27:12,993 INFO  ZScheduler-Worker-2    | Secret       : 5f7e0e28-f6bb-4511-8062-6a687a29c68d
+2025-01-22 13:27:12,993 INFO  ZScheduler-Worker-2    | Handler      : Eproc CP (https://eproc.trf4.jus.br/eproc2trf4)
+2025-01-22 13:27:12,993 INFO  ZScheduler-Worker-2    | Http Context : /opt/presto/service/shared/login/20250122132712t8QzWl5RkWbxQ90uG9bfFGeAXmRYzGIKaMJdkHm338A9hjXsLB
+2025-01-22 13:27:12,994 INFO  ZScheduler-Worker-2    | Proxy        : 192.168.0.1
+2025-01-22 13:27:12,994 INFO  ZScheduler-Worker-2    | Cookie       : [PHPSESSID] = [smivtcvrmgrbpb2rbnsj5v6i5r], domain:eproc.trf4.jus.br, path:/
+2025-01-22 13:27:12,994 INFO  ZScheduler-Worker-2    | Cookie       : [presto-credential-hash] = [5f7e0e28-f6bb-4511-8062-6a687a29c68d], domain:eproc.trf4.jus.br, path:/
+2025-01-22 13:27:12,994 INFO  ZScheduler-Worker-2    | Running 'openssl pkcs12 -in /tmp/cert-8636119632537104641.p12 -out /tmp/cert-342975651492513076.pem -nodes -passin pass:181292
+2025-01-22 13:27:13,003 INFO  zio-default-blocking-738 | Running 'openssl pkcs12 -in /tmp/cert-8399936971417020988.p12 -out /tmp/cert-5232426729296561585.pem -nodes -passin pass:181292 -legacy
+2025-01-22 13:27:13,012 INFO  zio-default-blocking-738 | Base url     : https://eproc.trf4.jus.br/eproc2trf4'
+2025-01-22 13:27:13,012 INFO  zio-default-blocking-738 | 
+>> [0 - login] POST https://eproc.trf4.jus.br/eproc2trf4/externo_controlador.php?acao=login_cert
+2025-01-22 13:27:13,012 INFO  zio-default-blocking-738 |  cookie > PHPSESSID=smivtcvrmgrbpb2rbnsj5v6i5r
+2025-01-22 13:27:13,012 INFO  zio-default-blocking-738 |  cookie > presto-credential-hash=5f7e0e28-f6bb-4511-8062-6a687a29c68d
+2025-01-22 13:27:13,012 INFO  zio-default-blocking-738 |  param  > acao=login_cert
+2025-01-22 13:27:13,012 INFO  zio-default-blocking-738 |  data   > hdnAcao=login
+2025-01-22 13:27:13,012 INFO  zio-default-blocking-738 |  data   > hdnDebug=
+2025-01-22 13:27:13,012 INFO  zio-default-blocking-738 |  data   > pwdSenha=
+2025-01-22 13:27:13,012 INFO  zio-default-blocking-738 |  data   > txtUsuario=
+2025-01-22 13:27:14,520 INFO  zio-default-blocking-738 | << 302 (location: lib/priv/login_cert.php?acao_origem=)
+2025-01-22 13:27:14,521 INFO  zio-default-blocking-738 | 
+>> [1 - FR-login] GET https://eproc.trf4.jus.br/eproc2trf4/lib/priv/login_cert.php?acao_origem=
+2025-01-22 13:27:14,521 INFO  zio-default-blocking-738 |  cookie > PHPSESSID=smivtcvrmgrbpb2rbnsj5v6i5r
+2025-01-22 13:27:14,521 INFO  zio-default-blocking-738 |  cookie > presto-credential-hash=5f7e0e28-f6bb-4511-8062-6a687a29c68d
+2025-01-22 13:27:14,521 INFO  zio-default-blocking-738 |  param  > acao_origem=
+2025-01-22 13:27:16,895 ERROR zio-default-blocking-738 | Error executing task: Bot Error [HttpError]: Error parsing curl response
+zio.FiberFailure: Bot Error [HttpError]: Error parsing curl response
+	at presto.express$SimpleExpressLoginService.toError$1(express.scala:344)
+	at presto.express$SimpleExpressLoginService.login$$anonfun$2$$anonfun$2$$anonfun$2$$anonfun$1$$anonfun$2$$anonfun$1$$anonfun$2$$anonfun$2$$anonfun$2$$anonfun$2$$anonfun$2(express.scala:376)
+	at zio.Cause$Fail.map(Cause.scala:898)
+	at zio.ZIO.mapError$$anonfun$1(ZIO.scala:994)
+	at zio.ZIO.mapErrorCause$$anonfun$1(ZIO.scala:1006)
+Caused by: java.lang.Exception: Bot Error [HttpError]: Error parsing curl response
+	at presto.express$SimpleExpressLoginService.toError$1(express.scala:344)
+	at presto.express$SimpleExpressLoginService.login$$anonfun$2$$anonfun$2$$anonfun$2$$anonfun$1$$anonfun$2$$anonfun$1$$anonfun$2$$anonfun$2$$anonfun$2$$anonfun$2$$anonfun$2(express.scala:376)
+	at zio.Cause$Fail.map(Cause.scala:898)
+	at zio.ZIO.mapError$$anonfun$1(ZIO.scala:994)
+	at zio.ZIO.mapErrorCause$$anonfun$1(ZIO.scala:1006)
+	at zio.internal.FiberRuntime.runLoop(FiberRuntime.scala:1106)
+	at zio.internal.FiberRuntime.runLoop(FiberRuntime.scala:1058)
+	at zio.internal.FiberRuntime.evaluateEffect(FiberRuntime.scala:410)
+	at zio.internal.FiberRuntime.evaluateMessageWhileSuspended(FiberRuntime.scala:486)
+	at zio.internal.FiberRuntime.drainQueueOnCurrentThread(FiberRuntime.scala:246)
+	at zio.internal.FiberRuntime.run(FiberRuntime.scala:136)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1128)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:628)
+	at java.base/java.lang.Thread.run(Thread.java:829)
+Caused by: java.lang.StringIndexOutOfBoundsException: begin 0, end -1, length 18
+	at java.base/java.lang.String.checkBoundsBeginEnd(String.java:3319)
+	at java.base/java.lang.String.substring(String.java:1874)
+	at zealot.http.curl$CurlHttpEngine.toHeader$1(curl.scala:213)
+	at zealot.http.curl$CurlHttpEngine.readHeaders$1$$anonfun$1$$anonfun$3(curl.scala:215)
+	at scala.collection.immutable.List.map(List.scala:247)
+	at scala.collection.immutable.List.map(List.scala:79)
+	at zealot.http.curl$CurlHttpEngine.readHeaders$1$$anonfun$1(curl.scala:215)
+	at zio.ZIOCompanionVersionSpecific.attempt$$anonfun$1(ZIOCompanionVersionSpecific.scala:108)
+	at zio.ZIO$.suspendSucceed$$anonfun$1(ZIO.scala:4823)
+	at zio.internal.FiberRuntime.runLoop(FiberRuntime.scala:989)
+	at zio.internal.FiberRuntime.runLoop(FiberRuntime.scala:1058)
+	at zio.internal.FiberRuntime.runLoop(FiberRuntime.scala:1058)
+	at zio.internal.FiberRuntime.runLoop(FiberRuntime.scala:1089)
+	at zio.internal.FiberRuntime.runLoop(FiberRuntime.scala:1058)
+	at zio.internal.FiberRuntime.runLoop(FiberRuntime.scala:1058)
+	at zio.internal.FiberRuntime.runLoop(FiberRuntime.scala:1058)
+	at zio.internal.FiberRuntime.runLoop(FiberRuntime.scala:1058)
+	at zio.internal.FiberRuntime.runLoop(FiberRuntime.scala:1058)
+	at zio.internal.FiberRuntime.runLoop(FiberRuntime.scala:1058)
+	at zio.internal.FiberRuntime.runLoop(FiberRuntime.scala:1058)
+	at zio.internal.FiberRuntime.runLoop(FiberRuntime.scala:1089)
+	... 8 common frames omitted
