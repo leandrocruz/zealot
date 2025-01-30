@@ -1,0 +1,58 @@
+2025-01-30 10:48:04,145 INFO  ZScheduler-Worker-0    | Url          : https://eproc1g.tjmg.jus.br/eproc/index.php
+2025-01-30 10:48:04,148 INFO  ZScheduler-Worker-0    | Secret       : c311bbcb-ea8d-45aa-892c-8af10a7131a8
+2025-01-30 10:48:04,148 INFO  ZScheduler-Worker-0    | Handler      : Eproc CP (https://eproc1g.tjmg.jus.br/eproc)
+2025-01-30 10:48:04,150 INFO  ZScheduler-Worker-0    | Http Context : /opt/presto/service/shared/login/20250130104804G9ScdZmOqDxJX5kahDM9baOm8GzIQKmA3hdTZJ0UcHtajJy9lv
+2025-01-30 10:48:04,160 INFO  ZScheduler-Worker-0    | Proxy        : 45.79.3.68
+2025-01-30 10:48:04,161 INFO  ZScheduler-Worker-0    | Cookie       : [eproc1g.tjmg.jus.br] [presto-credential-hash] = [c311bbcb-ea8d-45aa-892c-8af10a7131a8] (/)
+2025-01-30 10:48:04,169 INFO  ZScheduler-Worker-0    | Running 'openssl pkcs12 -in /var/folders/cd/90vz2jj93y93hsfk14gjq5l00000gn/T/cert-10088454360790856592.p12 -out /var/folders/cd/90vz2jj93y93hsfk14gjq5l00000gn/T/cert-12095234173410912529.pem -nodes -passin pass:885720
+2025-01-30 10:48:04,205 INFO  zio-default-blocking-1 | Base url     : https://eproc1g.tjmg.jus.br/eproc'
+2025-01-30 10:48:04,216 INFO  zio-default-blocking-1 | 
+>> [0 - login] POST https://eproc1g.tjmg.jus.br/eproc/externo_controlador.php?acao=login_cert
+2025-01-30 10:48:04,217 INFO  zio-default-blocking-1 |  cookie > presto-credential-hash=c311bbcb-ea8d-45aa-892c-8af10a7131a8
+2025-01-30 10:48:04,217 INFO  zio-default-blocking-1 |  param  > acao=login_cert
+2025-01-30 10:48:04,218 INFO  zio-default-blocking-1 |  data   > hdnAcao=login
+2025-01-30 10:48:04,218 INFO  zio-default-blocking-1 |  data   > hdnDebug=
+2025-01-30 10:48:04,218 INFO  zio-default-blocking-1 |  data   > pwdSenha=
+2025-01-30 10:48:04,218 INFO  zio-default-blocking-1 |  data   > txtUsuario=
+2025-01-30 10:48:07,019 ERROR zio-default-blocking-1 | Error executing task: Bot Error [HttpError]: Error parsing curl response
+zio.FiberFailure: Bot Error [HttpError]: Error parsing curl response
+	at presto.express$SimpleExpressLoginService.toError$1(express.scala:359)
+	at presto.express$SimpleExpressLoginService.login$$anonfun$2$$anonfun$2$$anonfun$2$$anonfun$1$$anonfun$2$$anonfun$1$$anonfun$3$$anonfun$3$$anonfun$2$$anonfun$2$$anonfun$2(express.scala:392)
+	at zio.Cause$Fail.map(Cause.scala:898)
+	at zio.ZIO.mapError$$anonfun$1(ZIO.scala:994)
+	at zio.ZIO.mapErrorCause$$anonfun$1(ZIO.scala:1006)
+Caused by: java.lang.Exception: Bot Error [HttpError]: Error parsing curl response
+	at presto.express$SimpleExpressLoginService.toError$1(express.scala:359)
+	at presto.express$SimpleExpressLoginService.login$$anonfun$2$$anonfun$2$$anonfun$2$$anonfun$1$$anonfun$2$$anonfun$1$$anonfun$3$$anonfun$3$$anonfun$2$$anonfun$2$$anonfun$2(express.scala:392)
+	at zio.Cause$Fail.map(Cause.scala:898)
+	at zio.ZIO.mapError$$anonfun$1(ZIO.scala:994)
+	at zio.ZIO.mapErrorCause$$anonfun$1(ZIO.scala:1006)
+	at zio.internal.FiberRuntime.runLoop(FiberRuntime.scala:1106)
+	at zio.internal.FiberRuntime.runLoop(FiberRuntime.scala:1058)
+	at zio.internal.FiberRuntime.evaluateEffect(FiberRuntime.scala:410)
+	at zio.internal.FiberRuntime.evaluateMessageWhileSuspended(FiberRuntime.scala:486)
+	at zio.internal.FiberRuntime.drainQueueOnCurrentThread(FiberRuntime.scala:246)
+	at zio.internal.FiberRuntime.run(FiberRuntime.scala:136)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1128)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:628)
+	at java.base/java.lang.Thread.run(Thread.java:834)
+Caused by: java.lang.StringIndexOutOfBoundsException: begin 0, end -1, length 15
+	at java.base/java.lang.String.checkBoundsBeginEnd(String.java:3319)
+	at java.base/java.lang.String.substring(String.java:1874)
+	at zealot.http.curl$ResponseParser$.toHeader$1(curl.scala:40)
+	at zealot.http.curl$ResponseParser$.readHeaders$1$$anonfun$1$$anonfun$3(curl.scala:42)
+	at scala.collection.immutable.List.map(List.scala:251)
+	at scala.collection.immutable.List.map(List.scala:79)
+	at zealot.http.curl$ResponseParser$.readHeaders$1$$anonfun$1(curl.scala:42)
+	at zio.ZIOCompanionVersionSpecific.attempt$$anonfun$1(ZIOCompanionVersionSpecific.scala:108)
+	at zio.ZIO$.suspendSucceed$$anonfun$1(ZIO.scala:4823)
+	at zio.internal.FiberRuntime.runLoop(FiberRuntime.scala:989)
+	at zio.internal.FiberRuntime.runLoop(FiberRuntime.scala:1058)
+	at zio.internal.FiberRuntime.runLoop(FiberRuntime.scala:1058)
+	at zio.internal.FiberRuntime.runLoop(FiberRuntime.scala:1089)
+	at zio.internal.FiberRuntime.runLoop(FiberRuntime.scala:1058)
+	at zio.internal.FiberRuntime.runLoop(FiberRuntime.scala:1058)
+	at zio.internal.FiberRuntime.runLoop(FiberRuntime.scala:1058)
+	at zio.internal.FiberRuntime.runLoop(FiberRuntime.scala:1058)
+	at zio.internal.FiberRuntime.runLoop(FiberRuntime.scala:1089)
+	... 8 common frames omitted
