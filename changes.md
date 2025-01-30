@@ -1,5 +1,10 @@
 # Zealot
 
+## Release v0.2.3
+LTS: 30/01/2025
+
+ - Second attempt at "header parsing problem with multiple responses"
+
 ## Release v0.2.2
 LTS: 22/01/2025
 

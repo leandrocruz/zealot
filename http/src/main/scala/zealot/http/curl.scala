@@ -76,10 +76,14 @@ object curl {
       }
 
       def normalize(lines: Seq[String]): Task[Seq[String]] = {
-        ZIO.attempt {
-          val (codes, headers) = lines.map(_.trim).filterNot(_.isEmpty).span(_.startsWith("HTTP"))
-          codes.lastOption.toSeq ++ headers
-        }
+        lines
+          .zipWithIndex
+          .filter( (line, idx) => line.startsWith("HTTP") )
+          .map(_._2)
+          .lastOption match {
+            case None      => ZIO.fail(Exception("Can't find line with HTTP response and status code"))
+            case Some(idx) => ZIO.succeed(lines.drop(idx))
+          }
       }
 
       for {
