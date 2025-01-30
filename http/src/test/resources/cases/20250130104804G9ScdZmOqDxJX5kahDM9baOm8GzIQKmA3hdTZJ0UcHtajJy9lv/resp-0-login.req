@@ -1,0 +1,28 @@
+{"location": "presto.handler.EprocCP.login", "file":"eproc.scala", "line": 184}
+curl \
+-k \
+-X \
+POST \
+--proxy \
+oystr-bot:tLPdx8tFyWK428VpCuMP@45.79.3.68:8107 \
+--cert-type \
+PEM \
+--cert \
+/var/folders/cd/90vz2jj93y93hsfk14gjq5l00000gn/T/cert-12095234173410912529.pem \
+--cookie \
+presto-credential-hash=c311bbcb-ea8d-45aa-892c-8af10a7131a8 \
+-A \
+Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 \
+--data-urlencode \
+hdnAcao=login \
+--data-urlencode \
+hdnDebug= \
+--data-urlencode \
+pwdSenha= \
+--data-urlencode \
+txtUsuario= \
+-D \
+/opt/presto/service/shared/login/20250130104804G9ScdZmOqDxJX5kahDM9baOm8GzIQKmA3hdTZJ0UcHtajJy9lv/resp-0-login.headers \
+-o \
+/opt/presto/service/shared/login/20250130104804G9ScdZmOqDxJX5kahDM9baOm8GzIQKmA3hdTZJ0UcHtajJy9lv/resp-0-login.res \
+https://eproc1g.tjmg.jus.br/eproc/externo_controlador.php?acao=login_cert
