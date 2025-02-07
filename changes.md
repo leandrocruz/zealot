@@ -1,5 +1,10 @@
 # Zealot
 
+## Release v0.2.4
+LTS: 07/02/2025
+
+ - Allowing responses to set cookies for parent domains of the current request 
+
 ## Release v0.2.3
 LTS: 30/01/2025
 

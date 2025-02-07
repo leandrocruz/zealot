@@ -338,10 +338,12 @@ case class DefaultHttpSession(
   override def count: ZLT[Int] = counter.getAndUpdate(_ + 1)
   override def update(request: ExecutableHttpRequest, response: HttpResponse): ZLT[Unit] = {
 
-    //      response.headers.foreach {
-    //        case (name, values) =>
-    //          values.foreach(v => println(s"[$name] = [$v]"))
-    //      }
+//    println(request.url)
+//    println(response.requestedUrl)
+//    response.headers.filter(_._1 == "set-cookie").foreach {
+//      case (name, values) =>
+//        values.foreach(v => println(s"[$name] = [$v]"))
+//    }
 
     def update: Task[Unit] = {
 
@@ -752,10 +754,10 @@ object Http {
 }
 
 object Cookies {
+
+  def domainGiven(name: String): String = if(name.startsWith(".")) name.drop(1) else name
+
   def from(cache: Seq[ResponseCookie]): Cookies = {
-
-    def domainGiven(name: String): String = if(name.startsWith(".")) name.drop(1) else name
-
     val init = cache
       .filter(_.domain.isDefined)
       .toSet
@@ -769,10 +771,16 @@ object Cookies {
 case class Cookies(cache: Map[String, Set[ResponseCookie]]) {
   def updateDomain(domain: String, cookie: ResponseCookie, remove: Boolean): Cookies = {
 
-    cache.get(domain) match
-      case Some(set) if remove => copy(cache = cache + (domain -> (set.filterNot(_.name == cookie.name)         )))
-      case Some(set)           => copy(cache = cache + (domain -> (set.filterNot(_.name == cookie.name) + cookie)))
-      case None if !remove     => copy(cache = cache + (domain -> Set(cookie)))
+    val key = cookie.domain.map(Cookies.domainGiven).flatMap { dom =>
+      if(domain.endsWith(dom)) Some(dom) else None
+    } getOrElse(domain)
+
+    //println(s"[$domain / $key] updating cookie ${cookie.name} (${cookie.domain.getOrElse("_")})")
+
+    cache.get(key) match
+      case Some(set) if remove => copy(cache = cache + (key -> (set.filterNot(_.name == cookie.name)         )))
+      case Some(set)           => copy(cache = cache + (key -> (set.filterNot(_.name == cookie.name) + cookie)))
+      case None if !remove     => copy(cache = cache + (key -> Set(cookie)))
       case _ => this
   }
 
