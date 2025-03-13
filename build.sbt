@@ -3,7 +3,7 @@ import sbt.Resolver
 
 ThisBuild / scalaVersion := "3.3.0"
 ThisBuild / organization := "zealot"
-ThisBuild / version      := "v0.2.4"
+ThisBuild / version      := "v0.2.5"
 ThisBuild / publishTo := {
   val host = "artifactregistry://southamerica-east1-maven.pkg.dev/oystr-cloud-test"
   if (isSnapshot.value) Some("Google Artifact Registry" at host + "/snapshots")
@@ -15,7 +15,7 @@ lazy val settings = Seq(
   testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework")
 )
 
-val ZioConfigVersion  = "3.0.1"
+val ZioConfigVersion  = "4.0.3"
 
 lazy val deps = new {
   val betterFiles       = "com.github.pathikrit"     %% "better-files"        % "3.9.2"
@@ -23,12 +23,12 @@ lazy val deps = new {
   val jsoup             = "org.jsoup"                %  "jsoup"               % "1.16.1"
   val logback           = "ch.qos.logback"           % "logback-classic"      % "1.2.11"
   val thymeleaf         = "org.thymeleaf"            %  "thymeleaf"           % "3.1.2.RELEASE"
-  val zio               = "dev.zio"                  %% "zio"                 % "2.0.14"
-  val zioJson           = "dev.zio"                  %% "zio-json"            % "0.5.0"
-  val zioSchema         = "dev.zio"                  %% "zio-schema"          % "0.4.12"
-  val zioSchemaJson     = "dev.zio"                  %% "zio-schema-json"     % "0.4.12"
-  val zioLogging        = "dev.zio"                  %% "zio-logging"         % "2.1.1"
-  val zioLoggingSlf4j   = "dev.zio"                  %% "zio-logging-slf4j"   % "2.1.1"
+  val zio               = "dev.zio"                  %% "zio"                 % "2.1.16"
+  val zioJson           = "dev.zio"                  %% "zio-json"            % "0.7.39"
+  val zioSchema         = "dev.zio"                  %% "zio-schema"          % "1.6.5"
+  val zioSchemaJson     = "dev.zio"                  %% "zio-schema-json"     % "1.6.5"
+  val zioLogging        = "dev.zio"                  %% "zio-logging"         % "2.5.0"
+  val zioLoggingSlf4j   = "dev.zio"                  %% "zio-logging-slf4j"   % "2.5.0"
   val zioConfig         = "dev.zio"                  %% "zio-config"          % ZioConfigVersion
   val zioConfigTypesafe = "dev.zio"                  %% "zio-config-typesafe" % ZioConfigVersion
   val zioConfigMagnolia = "dev.zio"                  %% "zio-config-magnolia" % ZioConfigVersion
