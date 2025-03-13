@@ -1,5 +1,10 @@
 # Zealot
 
+## Release v0.2.5
+LTS: 13/03/2025
+
+ - Updating zio dependencies
+
 ## Release v0.2.4
 LTS: 07/02/2025
 
