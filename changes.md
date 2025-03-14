@@ -1,5 +1,10 @@
 # Zealot
 
+## Release v0.2.6
+LTS: 14/03/2025
+
+- Added `HtmlElement.parent`
+
 ## Release v0.2.5
 LTS: 13/03/2025
 

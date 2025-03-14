@@ -56,6 +56,7 @@ trait HtmlElement {
   def attrOpt(name: String)      : ZLT[Option[String]]
   def text                       : ZLT[String]
   def html                       : ZLT[String]
+  def parent                     : ZLT[Option[HtmlElement]]
   def fnOpt[T](id: String)(fn: HtmlElement => ZLT[T]): ZLT[Option[T]]
 }
 
@@ -543,6 +544,7 @@ case class DefaultHtmlElement(charset: Charset, inner: Element) extends HtmlElem
       ZIO.succeed(None)
     }
   }
+
   override def attr(name: String): ZLT[String] = {
     for {
       opt   <- attrOpt(name)
@@ -553,9 +555,11 @@ case class DefaultHtmlElement(charset: Charset, inner: Element) extends HtmlElem
     } yield value
   }
 
-  override def text: ZLT[String] = ZIO.attempt(inner.text()).mapError(e => BotError(HtmlDocumentError, "Erro ao extrair o texto do elemento HTML", Some(e)))
+  private def elFn[T](msg: String, outcome: Outcome = HtmlDocumentError)(fn: Element => T): ZLT[T] = ZIO.attempt(fn(inner)).mapError(e => BotError(outcome, msg, Some(e)))
 
-  override def html: ZLT[String] = ZIO.attempt(inner.html()).mapError(e => BotError(HtmlDocumentError, "Erro ao extrair o html do elemento HTML", Some(e)))
+  override def text   = elFn("Erro ao extrair o texto do elemento") { _.text() }
+  override def html   = elFn("Erro ao extrair o html do elemento" ) { _.html() }
+  override def parent = elFn("Erro ao extrair pai do elemento"    ) { el => Option(el.parent()).map(DefaultHtmlElement(charset, _)) }
 
   override def fnOpt[T](id: String)(fn: HtmlElement => ZLT[T]): ZLT[Option[T]] = {
     for {
@@ -682,6 +686,7 @@ case class DefaultHtmlForm(element: HtmlElement, method: String, action: String,
   override def attrOpt(name: String)      : ZLT[Option[String]]      = element.attrOpt(name)
   override def text                       : ZLT[String]              = element.text
   override def html                       : ZLT[String]              = element.html
+  override def parent                     : ZLT[Option[HtmlElement]] = element.parent
 
   override def fnOpt[T](id: String)(fn: HtmlElement => ZLT[T]): ZLT[Option[T]] = element.fnOpt(id)(fn)
 
