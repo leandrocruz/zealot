@@ -1,5 +1,10 @@
 # Zealot
 
+## Release v0.2.7
+LTS: 19/03/2025
+
+ - Using `ExecutableHttpRequest` on `HttpInterceptor` 
+
 ## Release v0.2.6
 LTS: 14/03/2025
 
