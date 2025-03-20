@@ -7,6 +7,7 @@ object curl {
   import zealot.commons.Outcome.*
   import zealot.http.FormEncoding.*
   import zio.*
+  import zio.process.Command
 
   import java.net.URLDecoder
   import java.nio.charset.Charset
@@ -96,6 +97,77 @@ object curl {
       } yield DefaultHttpResponse(url, code, charset, headers, cookies, bodyFile)
     }
   }
+
+  /* see https://curl.se/libcurl/c/libcurl-errors.html */
+  val CurlErrors = Map(
+    1   -> "UNSUPPORTED_PROTOCOL",
+    2   -> "FAILED_INIT",
+    3   -> "URL_MALFORMAT",
+    4   -> "NOT_BUILT_IN",
+    5   -> "COULDNT_RESOLVE_PROXY",
+    6   -> "COULDNT_RESOLVE_HOST",
+    7   -> "COULDNT_CONNECT",
+    8   -> "WEIRD_SERVER_REPLY",
+    9   -> "REMOTE_ACCESS_DENIED",
+    10  -> "FTP_ACCEPT_FAILED",
+    16  -> "HTTP2",
+    18  -> "PARTIAL_FILE",
+    21  -> "QUOTE_ERROR",
+    22  -> "HTTP_RETURNED_ERROR",
+    23  -> "WRITE_ERROR",
+    25  -> "UPLOAD_FAILED",
+    27  -> "OUT_OF_MEMORY",
+    30  -> "OPERATION_TIMEDOUT",
+    33  -> "RANGE_ERROR",
+    35  -> "SSL_CONNECT_ERROR",
+    36  -> "BAD_DOWNLOAD_RESUME",
+    37  -> "FILE_COULDNT_READ_FILE",
+    42  -> "ABORTED_BY_CALLBACK",
+    43  -> "BAD_FUNCTION_ARGUMENT",
+    45  -> "INTERFACE_FAILED",
+    47  -> "TOO_MANY_REDIRECTS",
+    48  -> "UNKNOWN_OPTION",
+    49  -> "SETOPT_OPTION_SYNTAX",
+    52  -> "GOT_NOTHING",
+    53  -> "SSL_ENGINE_NOTFOUND",
+    54  -> "SSL_ENGINE_SETFAILED",
+    55  -> "SEND_ERROR",
+    56  -> "RECV_ERROR",
+    58  -> "SSL_CERTPROBLEM",
+    59  -> "SSL_CIPHER",
+    60  -> "PEER_FAILED_VERIFICATION",
+    61  -> "BAD_CONTENT_ENCODING",
+    63  -> "FILESIZE_EXCEEDED",
+    64  -> "USE_SSL_FAILED",
+    65  -> "SEND_FAIL_REWIND",
+    66  -> "SSL_ENGINE_INITFAILED",
+    67  -> "LOGIN_DENIED",
+    70  -> "REMOTE_DISK_FULL",
+    73  -> "REMOTE_FILE_EXISTS",
+    77  -> "SSL_CACERT_BADFILE",
+    78  -> "REMOTE_FILE_NOT_FOUND",
+    79  -> "SSH",
+    80  -> "SSL_SHUTDOWN_FAILED",
+    81  -> "AGAIN",
+    82  -> "SSL_CRL_BADFILE",
+    83  -> "SSL_ISSUER_ERROR",
+    88  -> "CHUNK_FAILED",
+    89  -> "NO_CONNECTION_AVAILABLE",
+    90  -> "SSL_PINNEDPUBKEYNOTMATCH",
+    91  -> "SSL_INVALIDCERTSTATUS",
+    92  -> "HTTP2_STREAM",
+    93  -> "RECURSIVE_API_CALL",
+    94  -> "AUTH_ERROR",
+    95  -> "HTTP3",
+    96  -> "QUIC_CONNECT_ERROR",
+    97  -> "PROXY",
+    98  -> "SSL_CLIENTCERT",
+    99  -> "UNRECOVERABLE_POLL",
+    100 -> "TOO_LARGE",
+    101 -> "ECH_REQUIRED",
+  )
+
+  case class CurlError(code: Int, message: Option[String], command: Seq[String], stderr: String) extends Exception(s"Curl Error ($code/${message.getOrElse("???")}): $stderr")
 
   /*
    * See https://ec.haxx.se/index.html
@@ -254,7 +326,22 @@ object curl {
         )
       }
 
-      def run(cmd: Seq[String]) = {
+      def run(cmd: Seq[String]): Task[String] = {
+        val head = cmd.head
+        val tail = cmd.tail
+
+        for
+          proc <- Command(head, tail: _*).workingDirectory(ctx.root.toJava).run
+          code <- proc.exitCode
+          out  <- proc.stdout.string
+          err  <- proc.stderr.string
+          _ <- code.code match
+                 case 0     => ZIO.unit
+                 case other => ZIO.fail(CurlError(other, CurlErrors.get(code.code), cmd, err))
+        yield out
+      }
+
+      def run0(cmd: Seq[String]): Task[String] = {
         val sb = new StringBuffer
 
         val logger = new ProcessLogger {
