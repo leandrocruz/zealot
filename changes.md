@@ -1,5 +1,10 @@
 # Zealot
 
+## Release v0.2.8
+LTS: 19/03/2025
+
+ - Calling `curl` via `zio-process` so that `zio.timeout(duration)` works
+
 ## Release v0.2.7
 LTS: 19/03/2025
 

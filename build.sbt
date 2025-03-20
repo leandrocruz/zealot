@@ -3,7 +3,7 @@ import sbt.Resolver
 
 ThisBuild / scalaVersion := "3.3.0"
 ThisBuild / organization := "zealot"
-ThisBuild / version      := "v0.2.7"
+ThisBuild / version      := "v0.2.8"
 ThisBuild / publishTo := {
   val host = "artifactregistry://southamerica-east1-maven.pkg.dev/oystr-cloud-test"
   if (isSnapshot.value) Some("Google Artifact Registry" at host + "/snapshots")
@@ -32,6 +32,7 @@ lazy val deps = new {
   val zioConfig         = "dev.zio"                  %% "zio-config"          % ZioConfigVersion
   val zioConfigTypesafe = "dev.zio"                  %% "zio-config-typesafe" % ZioConfigVersion
   val zioConfigMagnolia = "dev.zio"                  %% "zio-config-magnolia" % ZioConfigVersion
+  val zioProcess        = "dev.zio"                  %% "zio-process"         % "0.7.2"
   val scalaTest         = "org.scalatest"            %% "scalatest"           % "3.2.16" % Test
   val zioTest           = "dev.zio"                  %% "zio-test"            % "2.0.15" % Test
   val zioTestSbt        = "dev.zio"                  %% "zio-test-sbt"        % "2.0.15" % Test
@@ -47,7 +48,7 @@ lazy val commons = (project in file("commons"))
 lazy val http = (project in file("http"))
   .withId("zealot-http")
   .dependsOn(commons)
-  .settings(settings, libraryDependencies ++= shared ++ Seq(deps.jsoup))
+  .settings(settings, libraryDependencies ++= shared ++ Seq(deps.jsoup, deps.zioProcess))
 
 lazy val zealot = (project in file("."))
     .aggregate(commons, http)
