@@ -1,5 +1,10 @@
 # Zealot
 
+## Release v0.2.9
+LTS: 25/04/2025
+
+ - Added `HttpProxy.secure` to handle https proxies
+
 ## Release v0.2.8
 LTS: 19/03/2025
 
