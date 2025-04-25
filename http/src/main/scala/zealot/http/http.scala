@@ -160,9 +160,10 @@ case class Test(host: String, port: Int, scenario: String) extends HttpEnvironme
 case class ProxyAuth(username: String, password: String)
 
 case class HttpProxy(
-  host : String,
-  port : Int,
-  auth : Option[ProxyAuth] = None
+  host   : String,
+  port   : Int,
+  auth   : Option[ProxyAuth] = None,
+  secure : Boolean = false,
 )
 
 trait HttpSession {
