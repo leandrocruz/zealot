@@ -117,7 +117,7 @@ trait HttpRequest {
   def cookies         (values: Map[String, String])        : HttpRequest
   def field           (name: String, value: String)        : HttpRequest
   def formEncoding    (encoding: FormEncoding)             : HttpRequest
-  def followRedirects (follow: Boolean)                    : HttpRequest
+  def redirectConfig  (config: RedirectConfig)             : HttpRequest
   def certificate     (cert: ClientCertificate)            : HttpRequest
   def version         (ver: HttpVersion)                   : HttpRequest
   def body            (body: HttpBody)                     : HttpRequest
@@ -141,7 +141,7 @@ trait ExecutableHttpRequest {
   def cookies         : Set[RequestCookie]
   def body            : HttpBody
   def formEncoding    : FormEncoding
-  def followRedirects : Boolean
+  def redirectConfig(config: RedirectConfig): HttpRequest
   def certificate     : Option[ClientCertificate]
   def version         : Option[HttpVersion]
   def execute (expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse]
@@ -173,9 +173,9 @@ trait HttpSession {
   def ua          : String
   def certificate : Option[ClientCertificate]
   def proxy       : Option[HttpProxy]
-  def update(request: ExecutableHttpRequest, response: HttpResponse) : ZLT[Unit]
-  def requestGiven(url: String   , version: Option[HttpVersion])     : ZLT[HttpRequest]
-  def requestGiven(form: HtmlForm, version: Option[HttpVersion])     : ZLT[HttpRequest]
+  def update(request: ExecutableHttpRequest, response: HttpResponse)                                                : ZLT[Unit]
+  def requestGiven(url: String, version: Option[HttpVersion], redirectConfig: RedirectConfig = RedirectConfig.endOnLastRedirect): ZLT[HttpRequest]
+  def requestGiven(form: HtmlForm, version: Option[HttpVersion])                                                    : ZLT[HttpRequest]
   def rebase(baseUrl: String)      : ZLT[HttpSession]
   def cookies                      : ZLT[Cookies]
   def cookiesGiven(url: String)    : ZLT[Seq[ResponseCookie]]
@@ -367,17 +367,18 @@ case class DefaultHttpSession(
     update.mapError(e => BotError(UnexpectedError, "Erro atualizando estado interno do navegador", Some(e)))
   }
 
-  override def requestGiven(url: String, version: Option[HttpVersion]) = {
+  override def requestGiven(url: String, version: Option[HttpVersion], redirectConfig: RedirectConfig = RedirectConfig.endOnLastRedirect): ZLT[HttpRequest] = {
     for {
       domain  <- domainGiven(url)
       cookies <- cookiesByDomain(domain)
     } yield DefaultHttpRequest(
-      url         = url,
-      ua          = ua,
-      headers     = headers,
-      cookies     = cookies.map(_.toRequest),
-      certificate = certificate,
-      version     = version
+      url            = url,
+      ua             = ua,
+      headers        = headers,
+      cookies        = cookies.map(_.toRequest),
+      redirectConfig = redirectConfig,
+      certificate    = certificate,
+      version        = version
     )
   }
 
@@ -577,19 +578,20 @@ case class DefaultHtmlElement(charset: Charset, inner: Element) extends HtmlElem
 }
 
 case class DefaultHttpRequest (
-  url             : String,
-  ua              : String,
-  name            : Option[String]            = None,
-  method          : HttpMethod                = HttpMethod.Get,
-  formEncoding    : FormEncoding              = FormEncoding.Data,
-  followRedirects : Boolean                   = true,
-  parameters      : Map[String, Set[String]]  = Map.empty, /* query string */
-  headers         : Map[String, Set[String]]  = Map.empty,
-  cookies         : Set[RequestCookie]        = Set.empty,
-  fields          : Map[String, Set[String]]  = Map.empty,
-  certificate     : Option[ClientCertificate] = None,
-  version         : Option[HttpVersion]       = None,
-  body            : HttpBody                  = NoBody) extends HttpRequest, ExecutableHttpRequest {
+                                url             : String,
+                                ua              : String,
+                                name            : Option[String]            = None,
+                                method          : HttpMethod                = HttpMethod.Get,
+                                formEncoding    : FormEncoding              = FormEncoding.Data,
+                                followRedirects : Boolean                   = true,
+                                redirectConfig  : RedirectConfig            = RedirectConfig.endOnLastRedirect,
+                                parameters      : Map[String, Set[String]]  = Map.empty, /* query string */
+                                headers         : Map[String, Set[String]]  = Map.empty,
+                                cookies         : Set[RequestCookie]        = Set.empty,
+                                fields          : Map[String, Set[String]]  = Map.empty,
+                                certificate     : Option[ClientCertificate] = None,
+                                version         : Option[HttpVersion]       = None,
+                                body            : HttpBody                  = NoBody) extends HttpRequest, ExecutableHttpRequest {
 
   private def update(map: Map[String, Set[String]])(name: String, value: Option[String]): Map[String, Set[String]] = {
     map.updatedWith(name) {
@@ -609,7 +611,7 @@ case class DefaultHttpRequest (
   override def cookie          (name: String, value: String) : HttpRequest = copy(cookies         = cookies + DefaultRequestCookie(name, value))
   override def cookies         (values: Map[String, String]) : HttpRequest = copy(cookies         = cookies ++ values.map(DefaultRequestCookie(_, _)))
   override def formEncoding    (formEncoding: FormEncoding)  : HttpRequest = copy(formEncoding    = formEncoding)
-  override def followRedirects (follow: Boolean)             : HttpRequest = copy(followRedirects = follow)
+  override def redirectConfig  (config: RedirectConfig)      : HttpRequest = copy(redirectConfig  = config)
   override def certificate     (cert: ClientCertificate)     : HttpRequest = copy(certificate     = Some(cert))
   override def version         (ver: HttpVersion)            : HttpRequest = copy(version         = Some(ver))
 
@@ -647,12 +649,12 @@ case class DefaultHttpRequest (
         for {
           location <- response.redirect
           loc      <- fixRelativeUrl(location)
-          req      <- session.requestGiven(loc, version)
-          res      <- req.named(s"FR-${name.getOrElse("_")}").get()
+          res      <- if request.redirectConfig.redirectUntil.contains(loc.takeWhile(_ != '?')) then ZIO.succeed(response)
+                      else session.requestGiven(loc, version, request.redirectConfig).flatMap(_.named(s"FR-${name.getOrElse("_")}").get())
         } yield res
       }
 
-      if(request.followRedirects && response.code >= 300 && response.code < 400)
+      if(request.redirectConfig.followRedirects && response.code >= 300 && response.code < 400)
         for {
           _      <- interceptor.onFollow(this, response)
           result <- follow
@@ -673,6 +675,11 @@ case class DefaultHttpRequest (
       res3 <- interceptor.handle(this, res2)
     } yield res3
   }
+}
+
+case class RedirectConfig(followRedirects: Boolean, redirectUntil: Option[String])
+object RedirectConfig {
+  lazy val endOnLastRedirect: RedirectConfig = RedirectConfig(true, None)
 }
 
 case class DefaultHtmlForm(element: HtmlElement, method: String, action: String, values: Map[String, String]) extends HtmlForm {
