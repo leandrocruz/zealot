@@ -578,20 +578,20 @@ case class DefaultHtmlElement(charset: Charset, inner: Element) extends HtmlElem
 }
 
 case class DefaultHttpRequest (
-                                url             : String,
-                                ua              : String,
-                                name            : Option[String]            = None,
-                                method          : HttpMethod                = HttpMethod.Get,
-                                formEncoding    : FormEncoding              = FormEncoding.Data,
-                                followRedirects : Boolean                   = true,
-                                redirectConfig  : RedirectConfig            = RedirectConfig.endOnLastRedirect,
-                                parameters      : Map[String, Set[String]]  = Map.empty, /* query string */
-                                headers         : Map[String, Set[String]]  = Map.empty,
-                                cookies         : Set[RequestCookie]        = Set.empty,
-                                fields          : Map[String, Set[String]]  = Map.empty,
-                                certificate     : Option[ClientCertificate] = None,
-                                version         : Option[HttpVersion]       = None,
-                                body            : HttpBody                  = NoBody) extends HttpRequest, ExecutableHttpRequest {
+  url             : String,
+  ua              : String,
+  name            : Option[String]            = None,
+  method          : HttpMethod                = HttpMethod.Get,
+  formEncoding    : FormEncoding              = FormEncoding.Data,
+  followRedirects : Boolean                   = true,
+  redirectConfig  : RedirectConfig            = RedirectConfig.endOnLastRedirect,
+  parameters      : Map[String, Set[String]]  = Map.empty, /* query string */
+  headers         : Map[String, Set[String]]  = Map.empty,
+  cookies         : Set[RequestCookie]        = Set.empty,
+  fields          : Map[String, Set[String]]  = Map.empty,
+  certificate     : Option[ClientCertificate] = None,
+  version         : Option[HttpVersion]       = None,
+  body            : HttpBody                  = NoBody) extends HttpRequest, ExecutableHttpRequest {
 
   private def update(map: Map[String, Set[String]])(name: String, value: Option[String]): Map[String, Set[String]] = {
     map.updatedWith(name) {
