@@ -654,10 +654,9 @@ case class DefaultHttpRequest (
 
       if(request.followRedirects && response.code >= 300 && response.code < 400)
         for {
-          _      <- interceptor.onFollow(this, response)
-          result <- follow
+          flwRes <- interceptor.onFollow(this, response)
+          result <- if (flwRes.code >= 300 && flwRes.code < 400) follow else ZIO.succeed(flwRes)
         } yield result
-
       else ZIO.succeed(response)
     }
 

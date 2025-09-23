@@ -1,5 +1,7 @@
 # Zealot
 
+ - Minor fix before follow redirects
+
 ## Release v0.2.9
 LTS: 25/04/2025
 
