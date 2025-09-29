@@ -654,10 +654,10 @@ case class DefaultHttpRequest (
       }
 
       if(request.followRedirects && response.follow)
-        for {
+        for
           alternative <- interceptor.onFollow(this, response)
           result      <- if (alternative.follow) follow(alternative) else ZIO.succeed(alternative)
-        } yield result
+        yield result
       else ZIO.succeed(response)
     }
 
