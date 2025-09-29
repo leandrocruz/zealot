@@ -79,6 +79,7 @@ trait HttpResponse {
   def document(using session: HttpSession)      : ZLT[HtmlElement]
   def header(name: String)                      : Option[String]
   def requestedUrl                              : String
+  def follow                                    : Boolean = code >= 300 && code < 400
 }
 
 @FunctionalInterface
@@ -652,10 +653,10 @@ case class DefaultHttpRequest (
         } yield res
       }
 
-      if(request.followRedirects && response.code >= 300 && response.code < 400)
+      if(request.followRedirects && response.follow)
         for {
-          flwRes <- interceptor.onFollow(this, response)
-          result <- if (flwRes.code >= 300 && flwRes.code < 400) follow else ZIO.succeed(flwRes)
+          alternative <- interceptor.onFollow(this, response)
+          result      <- if (alternative.follow) follow else ZIO.succeed(alternative)
         } yield result
       else ZIO.succeed(response)
     }
