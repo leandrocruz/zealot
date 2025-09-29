@@ -1,5 +1,10 @@
 # Zealot
 
+## Release v0.3.0
+LTS: 29/09/2025
+
+ - Using the result of `HttpInterceptor.onFollow` when performing redirect requests 
+
 ## Release v0.2.9
 LTS: 25/04/2025
 
