@@ -629,7 +629,7 @@ case class DefaultHttpRequest (
 
     def handleRedirect(response: HttpResponse): ZLT[HttpResponse] = {
 
-      def follow: ZLT[HttpResponse] = {
+      def follow(toFollow: HttpResponse): ZLT[HttpResponse] = {
 
         def fixRelativeUrl(location: String): ZLT[String] = {
 
@@ -646,7 +646,7 @@ case class DefaultHttpRequest (
         }
 
         for {
-          location <- response.redirect
+          location <- toFollow.redirect
           loc      <- fixRelativeUrl(location)
           req      <- session.requestGiven(loc, version)
           res      <- req.named(s"FR-${name.getOrElse("_")}").get()
@@ -656,7 +656,7 @@ case class DefaultHttpRequest (
       if(request.followRedirects && response.follow)
         for {
           alternative <- interceptor.onFollow(this, response)
-          result      <- if (alternative.follow) follow else ZIO.succeed(alternative)
+          result      <- if (alternative.follow) follow(alternative) else ZIO.succeed(alternative)
         } yield result
       else ZIO.succeed(response)
     }
