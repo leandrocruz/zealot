@@ -119,6 +119,7 @@ trait HttpRequest {
   def field           (name: String, value: String)        : HttpRequest
   def formEncoding    (encoding: FormEncoding)             : HttpRequest
   def followRedirects (follow: Boolean)                    : HttpRequest
+  def maxRedirects    (max: Int)                           : HttpRequest
   def certificate     (cert: ClientCertificate)            : HttpRequest
   def version         (ver: HttpVersion)                   : HttpRequest
   def body            (body: HttpBody)                     : HttpRequest
@@ -584,6 +585,7 @@ case class DefaultHttpRequest (
   method          : HttpMethod                = HttpMethod.Get,
   formEncoding    : FormEncoding              = FormEncoding.Data,
   followRedirects : Boolean                   = true,
+  maxRedirects    : Int                       = 10,
   parameters      : Map[String, Set[String]]  = Map.empty, /* query string */
   headers         : Map[String, Set[String]]  = Map.empty,
   cookies         : Set[RequestCookie]        = Set.empty,
@@ -611,6 +613,7 @@ case class DefaultHttpRequest (
   override def cookies         (values: Map[String, String]) : HttpRequest = copy(cookies         = cookies ++ values.map(DefaultRequestCookie(_, _)))
   override def formEncoding    (formEncoding: FormEncoding)  : HttpRequest = copy(formEncoding    = formEncoding)
   override def followRedirects (follow: Boolean)             : HttpRequest = copy(followRedirects = follow)
+  override def maxRedirects    (max: Int)                    : HttpRequest = copy(maxRedirects    = max)
   override def certificate     (cert: ClientCertificate)     : HttpRequest = copy(certificate     = Some(cert))
   override def version         (ver: HttpVersion)            : HttpRequest = copy(version         = Some(ver))
 
@@ -627,7 +630,7 @@ case class DefaultHttpRequest (
 
   private def exec(expectations: Seq[Expectation], method: Option[HttpMethod])(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse] = {
 
-    def handleRedirect(response: HttpResponse): ZLT[HttpResponse] = {
+    def handleRedirect(response: HttpResponse, count: Int): ZLT[HttpResponse] = {
 
       def follow(toFollow: HttpResponse): ZLT[HttpResponse] = {
 
@@ -646,11 +649,14 @@ case class DefaultHttpRequest (
         }
 
         for {
+          _        <- ZIO.when(count >= maxRedirects) { ZIO.fail(BotError(HttpError, s"Too many redirects (max $maxRedirects) for url '${request.url}'")) }
           location <- toFollow.redirect
           loc      <- fixRelativeUrl(location)
           req      <- session.requestGiven(loc, version)
           res      <- req.named(s"FR-${name.getOrElse("_")}").get()
-        } yield res
+          _        <- session.update(request, res)
+          result   <- handleRedirect(res, count + 1)
+        } yield result
       }
 
       if(request.followRedirects && response.follow)
@@ -668,7 +674,7 @@ case class DefaultHttpRequest (
     for {
       res1 <- engine.execute(request)
       _    <- session.update(request, res1)
-      res2 <- handleRedirect(res1) //TODO prevent infinite redirects
+      res2 <- handleRedirect(res1, 0)
       _    <- ZIO.foreach(expectations)(_.assert(request, res2))
       res3 <- interceptor.handle(this, res2)
     } yield res3
