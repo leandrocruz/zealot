@@ -1,5 +1,11 @@
 # Zealot
 
+## Release v0.3.1
+LTS: 01/10/2025
+
+ - Added `HttpRequest.maxRedirects` to configure the maximum number of redirects allowed
+ - Added infinite redirect loop protection (defaults to max 10 redirects)
+
 ## Release v0.3.0
 LTS: 29/09/2025
 
