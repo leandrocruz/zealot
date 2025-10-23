@@ -252,10 +252,12 @@ object curl {
 //            case _                              => Seq.empty
 //          }
 
-          Seq("-A", request.ua) ++ (mockHeaders ++ (for {
+          val headers = (mockHeaders ++ (for {
             (name, values) <- request.headers
             value          <- values
           } yield (s"$name:$value")).toSeq).flatMap(value => Seq("-H", value))
+          
+          if request.withUserAgent then headers ++ Seq("-A", request.ua) else headers
         }
 
         def formFields: Seq[String] = {

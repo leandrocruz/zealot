@@ -1,5 +1,7 @@
 # Zealot
 
+ - Added `ExecutableHttpRequest.withUserAgent` to know when to add `request.ua` in headers
+
 ## Release v0.3.1
 LTS: 01/10/2025
 
