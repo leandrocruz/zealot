@@ -110,21 +110,22 @@ case class PemClientCertificate(file: File)                              extends
 case class Pkcs12ClientCertificate(file: File, password: Option[String]) extends ClientCertificate
 
 trait HttpRequest {
-  def url             (replace: String)                    : HttpRequest
-  def header          (name: String, value: String)        : HttpRequest
-  def removeHeader    (name: String)                       : HttpRequest
-  def param           (name: String, value: String)        : HttpRequest
-  def cookie          (name: String, value: String)        : HttpRequest
-  def cookies         (values: Map[String, String])        : HttpRequest
-  def field           (name: String, value: String)        : HttpRequest
-  def formEncoding    (encoding: FormEncoding)             : HttpRequest
-  def followRedirects (follow: Boolean)                    : HttpRequest
-  def maxRedirects    (max: Int)                           : HttpRequest
-  def certificate     (cert: ClientCertificate)            : HttpRequest
-  def version         (ver: HttpVersion)                   : HttpRequest
-  def body            (body: HttpBody)                     : HttpRequest
-  def body[T]         (body: T)(using enc: JsonEncoder[T]) : ZLT[HttpRequest]
-  def named           (name: String)                       : ExecutableHttpRequest
+  def url               (replace: String)                    : HttpRequest
+  def header            (name: String, value: String)        : HttpRequest
+  def removeHeader      (name: String)                       : HttpRequest
+  def param             (name: String, value: String)        : HttpRequest
+  def cookie            (name: String, value: String)        : HttpRequest
+  def cookies           (values: Map[String, String])        : HttpRequest
+  def field             (name: String, value: String)        : HttpRequest
+  def formEncoding      (encoding: FormEncoding)             : HttpRequest
+  def suppressUserAgent                                      : HttpRequest
+  def followRedirects   (follow: Boolean)                    : HttpRequest
+  def maxRedirects      (max: Int)                           : HttpRequest
+  def certificate       (cert: ClientCertificate)            : HttpRequest
+  def version           (ver: HttpVersion)                   : HttpRequest
+  def body              (body: HttpBody)                     : HttpRequest
+  def body[T]           (body: T)(using enc: JsonEncoder[T]) : ZLT[HttpRequest]
+  def named             (name: String)                       : ExecutableHttpRequest
 }
 
 trait HttpContext {
@@ -144,6 +145,7 @@ trait ExecutableHttpRequest {
   def body            : HttpBody
   def formEncoding    : FormEncoding
   def followRedirects : Boolean
+  def setUserAgent    : Boolean
   def certificate     : Option[ClientCertificate]
   def version         : Option[HttpVersion]
   def execute (expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse]
@@ -591,6 +593,7 @@ case class DefaultHttpRequest (
   cookies         : Set[RequestCookie]        = Set.empty,
   fields          : Map[String, Set[String]]  = Map.empty,
   certificate     : Option[ClientCertificate] = None,
+  setUserAgent    : Boolean                   = true,
   version         : Option[HttpVersion]       = None,
   body            : HttpBody                  = NoBody) extends HttpRequest, ExecutableHttpRequest {
 
@@ -612,6 +615,7 @@ case class DefaultHttpRequest (
   override def cookie          (name: String, value: String) : HttpRequest = copy(cookies         = cookies + DefaultRequestCookie(name, value))
   override def cookies         (values: Map[String, String]) : HttpRequest = copy(cookies         = cookies ++ values.map(DefaultRequestCookie(_, _)))
   override def formEncoding    (formEncoding: FormEncoding)  : HttpRequest = copy(formEncoding    = formEncoding)
+  override def suppressUserAgent                             : HttpRequest = copy(setUserAgent    = false)
   override def followRedirects (follow: Boolean)             : HttpRequest = copy(followRedirects = follow)
   override def maxRedirects    (max: Int)                    : HttpRequest = copy(maxRedirects    = max)
   override def certificate     (cert: ClientCertificate)     : HttpRequest = copy(certificate     = Some(cert))
