@@ -257,7 +257,7 @@ object curl {
             value          <- values
           } yield (s"$name:$value")).toSeq).flatMap(value => Seq("-H", value))
           
-          if request.withUserAgent then headers ++ Seq("-A", request.ua) else headers
+          if request.setUserAgent then headers ++ Seq("-A", request.ua) else headers
         }
 
         def formFields: Seq[String] = {
