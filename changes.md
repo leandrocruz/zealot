@@ -1,5 +1,7 @@
 # Zealot
 
+ - Added `HttpRequest.suppressUserAgent`
+
 ## Release v0.3.1
 LTS: 01/10/2025
 
