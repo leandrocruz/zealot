@@ -119,6 +119,7 @@ trait HttpRequest {
   def field             (name: String, value: String)        : HttpRequest
   def formEncoding      (encoding: FormEncoding)             : HttpRequest
   def suppressUserAgent                                      : HttpRequest
+  def impersonate       (impersonate: CurlImpersonate)       : HttpRequest
   def followRedirects   (follow: Boolean)                    : HttpRequest
   def maxRedirects      (max: Int)                           : HttpRequest
   def certificate       (cert: ClientCertificate)            : HttpRequest
@@ -146,6 +147,7 @@ trait ExecutableHttpRequest {
   def formEncoding    : FormEncoding
   def followRedirects : Boolean
   def setUserAgent    : Boolean
+  def useImpersonate  : Option[CurlImpersonate]
   def certificate     : Option[ClientCertificate]
   def version         : Option[HttpVersion]
   def execute (expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse]
@@ -171,24 +173,26 @@ case class HttpProxy(
 )
 
 trait HttpSession {
-  def environment : HttpEnvironment
-  def charset     : Charset
-  def baseUrl     : String
-  def ua          : String
-  def certificate : Option[ClientCertificate]
-  def proxy       : Option[HttpProxy]
-  def update(request: ExecutableHttpRequest, response: HttpResponse) : ZLT[Unit]
-  def requestGiven(url: String   , version: Option[HttpVersion])     : ZLT[HttpRequest]
-  def requestGiven(form: HtmlForm, version: Option[HttpVersion])     : ZLT[HttpRequest]
-  def rebase(baseUrl: String)      : ZLT[HttpSession]
-  def cookies                      : ZLT[Cookies]
-  def cookiesGiven(url: String)    : ZLT[Seq[ResponseCookie]]
-  def count                        : ZLT[Int]
+  def environment                                                          : HttpEnvironment
+  def charset                                                              : Charset
+  def curlContext                                                          : String
+  def baseUrl                                                              : String
+  def ua                                                                   : String
+  def certificate                                                          : Option[ClientCertificate]
+  def proxy                                                                : Option[HttpProxy]
+  def update      (request: ExecutableHttpRequest, response: HttpResponse) : ZLT[Unit]
+  def requestGiven(url: String, version: Option[HttpVersion])              : ZLT[HttpRequest]
+  def requestGiven(form: HtmlForm, version: Option[HttpVersion])           : ZLT[HttpRequest]
+  def rebase      (baseUrl: String)                                        : ZLT[HttpSession]
+  def cookies                                                              : ZLT[Cookies]
+  def cookiesGiven(url: String)                                            : ZLT[Seq[ResponseCookie]]
+  def count                                                                : ZLT[Int]
 }
 
 trait Http {
   def session(
     charset     : Charset,
+    curlContext : String = "",
     baseUrl     : String,
     ua          : String,
     headers     : Map[String, Set[String]]  = Map.empty,
@@ -314,6 +318,7 @@ object DefaultCookie {
 
 case class DefaultHttpSession(
   counter     : Ref[Int],
+  curlContext : String,
   history     : Ref[Seq[(ZonedDateTime, String)]],
   ref         : Ref[Cookies],
   environment : HttpEnvironment,
@@ -594,6 +599,7 @@ case class DefaultHttpRequest (
   fields          : Map[String, Set[String]]  = Map.empty,
   certificate     : Option[ClientCertificate] = None,
   setUserAgent    : Boolean                   = true,
+  useImpersonate  : Option[CurlImpersonate]   = None,
   version         : Option[HttpVersion]       = None,
   body            : HttpBody                  = NoBody) extends HttpRequest, ExecutableHttpRequest {
 
@@ -607,19 +613,20 @@ case class DefaultHttpRequest (
   override def named(name: String) : ExecutableHttpRequest = copy(name = Some(name))
   override def url(replace: String): HttpRequest = copy(url = replace)
 
-  override def body            (body: HttpBody)              : HttpRequest = copy(body            = body)
-  override def header          (name: String, value: String) : HttpRequest = copy(headers         = update(headers)   (name, Some(value)))
-  override def removeHeader    (name: String)                : HttpRequest = copy(headers         = update(headers)   (name, None      ))
-  override def param           (name: String, value: String) : HttpRequest = copy(parameters      = update(parameters)(name, Some(value)))
-  override def field           (name: String, value: String) : HttpRequest = copy(fields          = update(fields)    (name, Some(value)))
-  override def cookie          (name: String, value: String) : HttpRequest = copy(cookies         = cookies + DefaultRequestCookie(name, value))
-  override def cookies         (values: Map[String, String]) : HttpRequest = copy(cookies         = cookies ++ values.map(DefaultRequestCookie(_, _)))
-  override def formEncoding    (formEncoding: FormEncoding)  : HttpRequest = copy(formEncoding    = formEncoding)
-  override def suppressUserAgent                             : HttpRequest = copy(setUserAgent    = false)
-  override def followRedirects (follow: Boolean)             : HttpRequest = copy(followRedirects = follow)
-  override def maxRedirects    (max: Int)                    : HttpRequest = copy(maxRedirects    = max)
-  override def certificate     (cert: ClientCertificate)     : HttpRequest = copy(certificate     = Some(cert))
-  override def version         (ver: HttpVersion)            : HttpRequest = copy(version         = Some(ver))
+  override def body            (body: HttpBody)               : HttpRequest = copy(body            = body)
+  override def header          (name: String, value: String)  : HttpRequest = copy(headers         = update(headers)   (name, Some(value)))
+  override def removeHeader    (name: String)                 : HttpRequest = copy(headers         = update(headers)   (name, None      ))
+  override def param           (name: String, value: String)  : HttpRequest = copy(parameters      = update(parameters)(name, Some(value)))
+  override def field           (name: String, value: String)  : HttpRequest = copy(fields          = update(fields)    (name, Some(value)))
+  override def cookie          (name: String, value: String)  : HttpRequest = copy(cookies         = cookies + DefaultRequestCookie(name, value))
+  override def cookies         (values: Map[String, String])  : HttpRequest = copy(cookies         = cookies ++ values.map(DefaultRequestCookie(_, _)))
+  override def formEncoding    (formEncoding: FormEncoding)   : HttpRequest = copy(formEncoding    = formEncoding)
+  override def suppressUserAgent                              : HttpRequest = copy(setUserAgent    = false)
+  override def impersonate     (impersonate: CurlImpersonate) : HttpRequest = copy(useImpersonate  = Some(impersonate))
+  override def followRedirects (follow: Boolean)              : HttpRequest = copy(followRedirects = follow)
+  override def maxRedirects    (max: Int)                     : HttpRequest = copy(maxRedirects    = max)
+  override def certificate     (cert: ClientCertificate)      : HttpRequest = copy(certificate     = Some(cert))
+  override def version         (ver: HttpVersion)             : HttpRequest = copy(version         = Some(ver))
 
 
   override def get    (expectations: Expectation*) (using ctx: HttpContext, session: HttpSession, captcha: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse] = exec(expectations, Some(HttpMethod.Get) )
@@ -806,13 +813,14 @@ case class Cookies(cache: Map[String, Set[ResponseCookie]]) {
 
 case class DefaultHttp() extends Http {
 
-  override def session(charset: Charset, baseUrl: String, ua: String, headers: Map[String, Set[String]], cookies: Cookies, proxy: Option[HttpProxy], certificate: Option[ClientCertificate])(using environment: HttpEnvironment): ZLT[HttpSession] = {
+  override def session(charset: Charset, curlContext: String = "", baseUrl: String, ua: String, headers: Map[String, Set[String]], cookies: Cookies, proxy: Option[HttpProxy], certificate: Option[ClientCertificate])(using environment: HttpEnvironment): ZLT[HttpSession] = {
     for {
       counter <- Ref.make(0)
       cookies <- Ref.make(cookies)
       history <- Ref.make(Seq.empty)
     } yield DefaultHttpSession(
       counter,
+      curlContext,
       history,
       cookies,
       environment,

@@ -6,6 +6,15 @@ import zio.json.ast.Json
 import better.files.*
 import File.*
 
+enum CurlImpersonate(val binary: String):
+    case Chrome116 extends CurlImpersonate("curl_chrome116")
+    case Chrome110 extends CurlImpersonate("curl_chrome110")
+    case Chrome107 extends CurlImpersonate("curl_chrome107")
+    case Chrome104 extends CurlImpersonate("curl_chrome104")
+    case Chrome101 extends CurlImpersonate("curl_chrome101")
+    case Chrome100 extends CurlImpersonate("curl_chrome100")
+    case Chrome99  extends CurlImpersonate("curl_chrome99")
+
 enum Outcome:
     case CaptchaError
     case CertificateError

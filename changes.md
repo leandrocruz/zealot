@@ -1,5 +1,7 @@
 # Zealot
 
+ - Added `CurlImpersonate`
+
 ## Release v0.4.0
 LTS: 05/11/2025
 

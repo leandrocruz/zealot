@@ -195,7 +195,14 @@ object curl {
 
       def build(count: Int, url: String, headersFile: File, bodyFile: File): Task[Seq[String]] = {
 
-        def curl: Seq[String] = Seq("curl", "-k")
+        def curl: Seq[String] = {
+          
+          def findCurlVersion(version: CurlImpersonate) = CurlImpersonate.values.find(_ == version).getOrElse(CurlImpersonate.Chrome116)
+
+          request.useImpersonate match
+            case Some(version) => Seq(s"${session.curlContext}/${findCurlVersion(version).binary}", "-k")
+            case None          => Seq("curl", "-k")
+        }
 
         def version: Seq[String] = {
 
