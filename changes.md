@@ -1,5 +1,8 @@
 # Zealot
 
+## Release v0.5.0
+LTS: 13/01/2026
+
  - Using scala 3.7.2
  - Added HttpOptions
  - Customizing the curl binary via CurlOptions
