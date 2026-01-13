@@ -176,7 +176,7 @@ object curl {
 
     private val traceRegex = """(.*?)\((.*?):([^:]*?)\)""".r
 
-    override def execute(request: ExecutableHttpRequest)(using ctx: HttpContext, session: HttpSession, trace: Trace): ZLT[HttpResponse] = {
+    override def execute(request: ExecutableHttpRequest, options: Option[HttpOptions])(using ctx: HttpContext, session: HttpSession, trace: Trace): ZLT[HttpResponse] = {
 
       def onError(msg: String)(cause: Throwable) = BotError(outcome = HttpError, explanation = msg, cause = Some(cause))
 
@@ -195,7 +195,11 @@ object curl {
 
       def build(count: Int, url: String, headersFile: File, bodyFile: File): Task[Seq[String]] = {
 
-        def curl: Seq[String] = Seq("curl", "-k")
+        def curl: Seq[String] = {
+          options match
+            case Some(CurlOptions(binary)) => Seq(binary, "-k")
+            case _                         => Seq("curl", "-k")
+        }
 
         def version: Seq[String] = {
 

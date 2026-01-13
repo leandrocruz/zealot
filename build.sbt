@@ -1,9 +1,9 @@
 import sbt.Keys.*
 import sbt.Resolver
 
-ThisBuild / scalaVersion := "3.3.0"
+ThisBuild / scalaVersion := "3.7.2"
 ThisBuild / organization := "zealot"
-ThisBuild / version      := "v0.4.0"
+ThisBuild / version      := "v0.5.0"
 ThisBuild / publishTo := {
   val host = "artifactregistry://southamerica-east1-maven.pkg.dev/oystr-cloud-test"
   if (isSnapshot.value) Some("Google Artifact Registry" at host + "/snapshots")

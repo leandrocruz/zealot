@@ -148,13 +148,16 @@ trait ExecutableHttpRequest {
   def setUserAgent    : Boolean
   def certificate     : Option[ClientCertificate]
   def version         : Option[HttpVersion]
-  def execute (expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse]
-  def get     (expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse]
-  def post    (expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse]
+  def execute (                      expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse]
+  def execute (options: HttpOptions, expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse]
+  def get     (                      expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse]
+  def get     (options: HttpOptions, expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse]
+  def post    (                      expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse]
+  def post    (options: HttpOptions, expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse]
 }
 
 trait HttpEngine {
-  def execute(request: ExecutableHttpRequest)(using ctx: HttpContext, session: HttpSession, trace: Trace): ZLT[HttpResponse]
+  def execute(request: ExecutableHttpRequest, options: Option[HttpOptions] = None)(using ctx: HttpContext, session: HttpSession, trace: Trace): ZLT[HttpResponse]
 }
 
 sealed trait HttpEnvironment
@@ -169,6 +172,10 @@ case class HttpProxy(
   auth   : Option[ProxyAuth] = None,
   secure : Boolean = false,
 )
+
+
+trait HttpOptions
+case class CurlOptions(binary: String) extends HttpOptions
 
 trait HttpSession {
   def environment : HttpEnvironment
@@ -621,10 +628,12 @@ case class DefaultHttpRequest (
   override def certificate     (cert: ClientCertificate)     : HttpRequest = copy(certificate     = Some(cert))
   override def version         (ver: HttpVersion)            : HttpRequest = copy(version         = Some(ver))
 
-
-  override def get    (expectations: Expectation*) (using ctx: HttpContext, session: HttpSession, captcha: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse] = exec(expectations, Some(HttpMethod.Get) )
-  override def post   (expectations: Expectation*) (using ctx: HttpContext, session: HttpSession, captcha: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse] = exec(expectations, Some(HttpMethod.Post))
-  override def execute(expectations: Expectation*) (using ctx: HttpContext, session: HttpSession, captcha: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse] = exec(expectations, None                 )
+  override def get    (                      expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, captcha: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse] = exec(expectations, Some(HttpMethod.Get) , None         )
+  override def get    (options: HttpOptions, expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, captcha: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse] = exec(expectations, Some(HttpMethod.Get) , Some(options))
+  override def post   (                      expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, captcha: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse] = exec(expectations, Some(HttpMethod.Post), None         )
+  override def post   (options: HttpOptions, expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, captcha: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse] = exec(expectations, Some(HttpMethod.Post), Some(options))
+  override def execute(                      expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, captcha: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse] = exec(expectations, None                 , None         )
+  override def execute(options: HttpOptions, expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, captcha: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse] = exec(expectations, None                 , Some(options))
 
   override def body[T](body: T)(using enc: JsonEncoder[T]) : ZLT[HttpRequest] = {
     body.toJsonAST match
@@ -632,7 +641,7 @@ case class DefaultHttpRequest (
       case Right(ast) => ZIO.succeed(this.body(JsonBody(ast)))
   }
 
-  private def exec(expectations: Seq[Expectation], method: Option[HttpMethod])(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse] = {
+  private def exec(expectations: Seq[Expectation], method: Option[HttpMethod], options: Option[HttpOptions])(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse] = {
 
     def handleRedirect(response: HttpResponse, count: Int): ZLT[HttpResponse] = {
 
@@ -675,13 +684,13 @@ case class DefaultHttpRequest (
       case Some(m) => copy(method = m)
       case None    => this
 
-    for {
-      res1 <- engine.execute(request)
+    for
+      res1 <- engine.execute(request, options)
       _    <- session.update(request, res1)
       res2 <- handleRedirect(res1, 0)
       _    <- ZIO.foreach(expectations)(_.assert(request, res2))
       res3 <- interceptor.handle(this, res2)
-    } yield res3
+    yield res3
   }
 }
 
