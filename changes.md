@@ -1,5 +1,7 @@
 # Zealot
 
+ - Added `HttpProxy.skipCertificateValidation` to be able to add the `--proxy-insecure` option to the curl command line
+
 ## Release v0.5.0
 LTS: 13/01/2026
 
