@@ -319,11 +319,17 @@ object curl {
         }
 
         def proxy: Seq[String] = {
+
           def proxyGiven(p: HttpProxy): Seq[String] = {
-            val proto       = if (p.secure) "https://" else "http://"
+            val proto       = if(p.secure) "https://" else "http://"
             val hostAndPort = s"${p.host}:${p.port}"
-            Seq("--proxy", proto + p.auth.map(a => s"${a.username}:${a.password}@$hostAndPort").getOrElse(hostAndPort))
+
+            val skip  = if(p.skipCertificateValidation) Seq("--proxy-insecure") else Seq.empty
+            val proxy = Seq("--proxy", proto + p.auth.map(a => s"${a.username}:${a.password}@$hostAndPort").getOrElse(hostAndPort))
+
+            proxy ++ skip
           }
+
           session.proxy.map(proxyGiven).getOrElse(Seq.empty)
         }
 
