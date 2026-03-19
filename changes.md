@@ -1,5 +1,17 @@
 # Zealot
 
+## Release v0.7.0
+LTS: 19/03/2026
+
+ - Added `Compression` enum (`Off`, `All`, `Only(algorithms*)`) for controlling HTTP response compression
+ - Added `HttpRequest.compressed(compression)` to control compression per request
+ - Added `HttpSession.compressed` to set compression as a session default
+ - Request-level compression takes precedence over session-level
+ - CurlHttpEngine renders `--compressed` and optionally overrides `Accept-Encoding` for `Compression.Only`
+ - `HttpResponse.bodyAsString` now auto-decompresses `gzip` and `deflate` responses based on `Content-Encoding` header
+ - `HttpResponse.bodyAsString` now validates `Content-Type` and fails for binary content types
+ - `HttpResponse.bodyAsString` uses `ZIO.attemptBlocking` and `ZIO.acquireReleaseWith` for safe blocking I/O with guaranteed resource cleanup
+
 ## Release v0.6.1
 LTS: 17/03/2026
 

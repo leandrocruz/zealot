@@ -318,6 +318,14 @@ object curl {
 
         }
 
+        def compressed: Seq[String] = {
+          import Compression.*
+          request.compressed.getOrElse(session.compressed) match
+            case Off              => Seq.empty
+            case All              => Seq("--compressed")
+            case Only(algos @ _*) => Seq("--compressed", "-H", s"Accept-Encoding: ${algos.mkString(", ")}")
+        }
+
         def proxy: Seq[String] = {
 
           def proxyGiven(p: HttpProxy): Seq[String] = {
@@ -334,7 +342,7 @@ object curl {
         }
 
         ZIO.attempt(
-           curl ++ version ++ requestMethod ++ proxy ++ certificate ++ cookies ++ headerFields ++ formFields ++ dumpHeaders ++ dumpBody ++ dumpOutput ++ Seq(url)
+           curl ++ version ++ requestMethod ++ compressed ++ proxy ++ certificate ++ cookies ++ headerFields ++ formFields ++ dumpHeaders ++ dumpBody ++ dumpOutput ++ Seq(url)
         )
       }
 
