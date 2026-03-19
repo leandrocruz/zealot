@@ -112,11 +112,13 @@ case class Pkcs12ClientCertificate(file: File, password: Option[String]) extends
 trait HttpRequest {
   def url               (replace: String)                    : HttpRequest
   def header            (name: String, value: String)        : HttpRequest
+  def headers           (values: Map[String, Set[String]])   : HttpRequest
   def removeHeader      (name: String)                       : HttpRequest
   def param             (name: String, value: String)        : HttpRequest
   def cookie            (name: String, value: String)        : HttpRequest
   def cookies           (values: Map[String, String])        : HttpRequest
   def field             (name: String, value: String)        : HttpRequest
+  def fields            (values: Map[String, Set[String]])   : HttpRequest
   def formEncoding      (encoding: FormEncoding)             : HttpRequest
   def suppressUserAgent                                      : HttpRequest
   def followRedirects   (follow: Boolean)                    : HttpRequest
@@ -615,19 +617,21 @@ case class DefaultHttpRequest (
   override def named(name: String) : ExecutableHttpRequest = copy(name = Some(name))
   override def url(replace: String): HttpRequest = copy(url = replace)
 
-  override def body            (body: HttpBody)              : HttpRequest = copy(body            = body)
-  override def header          (name: String, value: String) : HttpRequest = copy(headers         = update(headers)   (name, Some(value)))
-  override def removeHeader    (name: String)                : HttpRequest = copy(headers         = update(headers)   (name, None      ))
-  override def param           (name: String, value: String) : HttpRequest = copy(parameters      = update(parameters)(name, Some(value)))
-  override def field           (name: String, value: String) : HttpRequest = copy(fields          = update(fields)    (name, Some(value)))
-  override def cookie          (name: String, value: String) : HttpRequest = copy(cookies         = cookies + DefaultRequestCookie(name, value))
-  override def cookies         (values: Map[String, String]) : HttpRequest = copy(cookies         = cookies ++ values.map(DefaultRequestCookie(_, _)))
-  override def formEncoding    (formEncoding: FormEncoding)  : HttpRequest = copy(formEncoding    = formEncoding)
-  override def suppressUserAgent                             : HttpRequest = copy(setUserAgent    = false)
-  override def followRedirects (follow: Boolean)             : HttpRequest = copy(followRedirects = follow)
-  override def maxRedirects    (max: Int)                    : HttpRequest = copy(maxRedirects    = max)
-  override def certificate     (cert: ClientCertificate)     : HttpRequest = copy(certificate     = Some(cert))
-  override def version         (ver: HttpVersion)            : HttpRequest = copy(version         = Some(ver))
+  override def body            (body: HttpBody)                   : HttpRequest = copy(body            = body)
+  override def header          (name: String, value: String)      : HttpRequest = copy(headers         = update(headers)   (name, Some(value)))
+  override def headers         (values: Map[String, Set[String]]) : HttpRequest = copy(headers         = headers ++ values)
+  override def removeHeader    (name: String)                     : HttpRequest = copy(headers         = update(headers)   (name, None      ))
+  override def param           (name: String, value: String)      : HttpRequest = copy(parameters      = update(parameters)(name, Some(value)))
+  override def field           (name: String, value: String)      : HttpRequest = copy(fields          = update(fields)    (name, Some(value)))
+  override def fields          (values: Map[String, Set[String]]) : HttpRequest = copy(fields          = fields ++ values)
+  override def cookie          (name: String, value: String)      : HttpRequest = copy(cookies         = cookies + DefaultRequestCookie(name, value))
+  override def cookies         (values: Map[String, String])      : HttpRequest = copy(cookies         = cookies ++ values.map(DefaultRequestCookie(_, _)))
+  override def formEncoding    (formEncoding: FormEncoding)       : HttpRequest = copy(formEncoding    = formEncoding)
+  override def suppressUserAgent                                  : HttpRequest = copy(setUserAgent    = false)
+  override def followRedirects (follow: Boolean)                  : HttpRequest = copy(followRedirects = follow)
+  override def maxRedirects    (max: Int)                         : HttpRequest = copy(maxRedirects    = max)
+  override def certificate     (cert: ClientCertificate)          : HttpRequest = copy(certificate     = Some(cert))
+  override def version         (ver: HttpVersion)                 : HttpRequest = copy(version         = Some(ver))
 
   override def get    (                      expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, captcha: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse] = exec(expectations, Some(HttpMethod.Get) , None         )
   override def get    (options: HttpOptions, expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, captcha: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse] = exec(expectations, Some(HttpMethod.Get) , Some(options))

@@ -1,5 +1,11 @@
 # Zealot
 
+## Release v0.6.1
+LTS: 17/03/2026
+
+ - Added `HttpRequest.headers(values)`
+ - Added `HttpRequest.fields (values)`
+
 ## Release v0.6.0
 LTS: 11/03/2026
 
