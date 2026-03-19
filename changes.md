@@ -1,5 +1,11 @@
 # Zealot
 
+
+## Release v0.8.0
+LTS: 19/03/2026
+
+ - Added `DataUrlEncodeCharset`
+ 
 ## Release v0.7.0
 LTS: 19/03/2026
 

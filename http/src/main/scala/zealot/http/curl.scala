@@ -9,7 +9,7 @@ object curl {
   import zio.*
   import zio.process.Command
 
-  import java.net.URLDecoder
+  import java.net.{URLDecoder, URLEncoder}
   import java.nio.charset.Charset
   import java.time.ZonedDateTime
   import scala.sys.process.*
@@ -266,12 +266,12 @@ object curl {
 
         def formFields: Seq[String] = {
 
-          def encodeData(pairs: Seq[(String, String)]): Seq[String] = {
+          def encodeData(pairs: Seq[(String, String)], fn: String => String = identity): Seq[String] = {
             pairs.flatMap {
-              case (name, value) => Seq("-d", s"$name=$value")
+              case (name, value) => Seq("-d", s"${fn(name)}=${fn(value)}")
             }
           }
-
+          
           def encodeUrl(pairs: Seq[(String, String)]): Seq[String] = {
             pairs.flatMap {
               case (name, value) => Seq("--data-urlencode", s"$name=$value")
@@ -296,11 +296,12 @@ object curl {
               } yield (name, value)
 
               request.formEncoding match {
-                case Data          => encodeData       (pairs)
-                case DataRaw       => encodeDataRaw    (pairs)
-                case DataBinary    => encodeDataBinary (pairs)
-                case DataUrlEncode => encodeUrl        (pairs)
-                case Multipart     => encodeMultipart  (pairs)
+                case Data                          => encodeData       (pairs)
+                case DataRaw                       => encodeDataRaw    (pairs)
+                case DataBinary                    => encodeDataBinary (pairs)
+                case DataUrlEncode                 => encodeUrl        (pairs)
+                case DataUrlEncodeCharset(charset) => encodeData       (pairs, URLEncoder.encode(_, charset))
+                case Multipart                     => encodeMultipart  (pairs)
               }
 
             case _ => Seq.empty

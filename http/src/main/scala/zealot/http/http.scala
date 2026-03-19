@@ -28,6 +28,7 @@ enum HttpMethod:
 
 enum FormEncoding:
   case Data, DataRaw, DataBinary, DataUrlEncode, Multipart
+  case DataUrlEncodeCharset(charset: Charset)
 
 enum Compression:
   case Off
