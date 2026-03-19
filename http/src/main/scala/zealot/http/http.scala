@@ -9,12 +9,12 @@ import zio.*
 import zio.json.*
 import zio.json.ast.Json
 
-import java.io.{FileInputStream, InputStream}
+import java.io.{ByteArrayOutputStream, FileInputStream, InputStream}
 import java.net.{URI, URL, URLEncoder}
 import java.nio.charset.Charset
+import java.util.zip.{GZIPInputStream, InflaterInputStream}
 import java.time.format.DateTimeFormatter
 import java.time.{ZoneId, ZonedDateTime}
-import scala.collection.immutable
 import scala.jdk.CollectionConverters.*
 import scala.util.Try
 
@@ -28,6 +28,11 @@ enum HttpMethod:
 
 enum FormEncoding:
   case Data, DataRaw, DataBinary, DataUrlEncode, Multipart
+
+enum Compression:
+  case Off
+  case All
+  case Only(algorithms: String*)
 
 trait RequestCookie {
   def name    : String
@@ -127,6 +132,7 @@ trait HttpRequest {
   def version           (ver: HttpVersion)                   : HttpRequest
   def body              (body: HttpBody)                     : HttpRequest
   def body[T]           (body: T)(using enc: JsonEncoder[T]) : ZLT[HttpRequest]
+  def compressed        (compression: Compression = Compression.All) : HttpRequest
   def named             (name: String)                       : ExecutableHttpRequest
 }
 
@@ -145,6 +151,7 @@ trait ExecutableHttpRequest {
   def fields          : Map[String, Set[String]]
   def cookies         : Set[RequestCookie]
   def body            : HttpBody
+  def compressed      : Option[Compression]
   def formEncoding    : FormEncoding
   def followRedirects : Boolean
   def setUserAgent    : Boolean
@@ -181,12 +188,13 @@ trait HttpOptions
 case class CurlOptions(binary: String) extends HttpOptions
 
 trait HttpSession {
-  def environment : HttpEnvironment
-  def charset     : Charset
-  def baseUrl     : String
-  def ua          : String
-  def certificate : Option[ClientCertificate]
-  def proxy       : Option[HttpProxy]
+  def environment  : HttpEnvironment
+  def charset      : Charset
+  def baseUrl      : String
+  def ua           : String
+  def compressed   : Compression
+  def certificate  : Option[ClientCertificate]
+  def proxy        : Option[HttpProxy]
   def update(request: ExecutableHttpRequest, response: HttpResponse) : ZLT[Unit]
   def requestGiven(url: String   , version: Option[HttpVersion])     : ZLT[HttpRequest]
   def requestGiven(form: HtmlForm, version: Option[HttpVersion])     : ZLT[HttpRequest]
@@ -203,8 +211,9 @@ trait Http {
     ua          : String,
     headers     : Map[String, Set[String]]  = Map.empty,
     cookies     : Cookies                   = Cookies.from(Seq.empty),
+    compressed  : Compression               = Compression.Off,
     proxy       : Option[HttpProxy]         = None,
-    certificate : Option[ClientCertificate] = None
+    certificate : Option[ClientCertificate] = None,
   )(using environment: HttpEnvironment) : ZLT[HttpSession]
 
   def url(url: String)            (using session: HttpSession): ZLT[HttpRequest]
@@ -331,6 +340,7 @@ case class DefaultHttpSession(
   baseUrl     : String, //TODO check if baseUrl is a valid, absolute url
   ua          : String,
   headers     : Map[String, Set[String]],
+  compressed  : Compression               = Compression.Off,
   proxy       : Option[HttpProxy]         = None,
   certificate : Option[ClientCertificate] = None
 ) extends HttpSession {
@@ -498,7 +508,48 @@ case class DefaultHttpResponse(
   }
 
   override def bodyAsString: ZLT[String] = {
-    ZIO.attempt(body.contentAsString).mapError(BotError.of(HtmlDocumentError, "Erro ao ler o corpo da resposta no modo texto"))
+
+    def isTextContent: Boolean = {
+      header("content-type").map(_.trim.toLowerCase) match
+        case None       => true
+        case Some(ct)   =>
+          ct.startsWith("text/")              ||
+          ct.startsWith("application/json")   ||
+          ct.startsWith("application/xml")    ||
+          ct.startsWith("application/xhtml")  ||
+          ct.contains("javascript")           ||
+          ct.contains("+xml")                 ||
+          ct.contains("+json")                ||
+          ct.contains("x-www-form-urlencoded")
+    }
+
+    def read = {
+
+      def decompress(wrap: InputStream => InputStream): Task[String] = {
+
+        def open                   = ZIO.attemptBlocking(new FileInputStream(body.toJava))
+        def close(is: InputStream) = ZIO.succeed(is.close())
+
+        ZIO.acquireReleaseWith(open)(close) { fis =>
+          ZIO.attemptBlocking {
+            val is  = wrap(fis)
+            val buf = new ByteArrayOutputStream()
+            is.transferTo(buf)
+            buf.toString(charset.map(_.name()).getOrElse("UTF-8"))
+          }
+        }
+      }
+
+      header("content-encoding").map(_.trim.toLowerCase) match
+        case Some("gzip")    => decompress(GZIPInputStream(_))
+        case Some("deflate") => decompress(InflaterInputStream(_))
+        case _               => ZIO.attemptBlocking(body.contentAsString)
+    }
+
+    if isTextContent then
+      read.mapError(BotError.of(HtmlDocumentError, "Error reading the response body on text mode"))
+    else
+      ZIO.fail(BotError(HtmlDocumentError, s"Response body is not readable text (Content-Type: ${header("content-type").getOrElse("unknown")})"))
   }
 }
 
@@ -604,6 +655,7 @@ case class DefaultHttpRequest (
   fields          : Map[String, Set[String]]  = Map.empty,
   certificate     : Option[ClientCertificate] = None,
   setUserAgent    : Boolean                   = true,
+  compressed      : Option[Compression]       = None,
   version         : Option[HttpVersion]       = None,
   body            : HttpBody                  = NoBody) extends HttpRequest, ExecutableHttpRequest {
 
@@ -631,6 +683,7 @@ case class DefaultHttpRequest (
   override def followRedirects (follow: Boolean)                  : HttpRequest = copy(followRedirects = follow)
   override def maxRedirects    (max: Int)                         : HttpRequest = copy(maxRedirects    = max)
   override def certificate     (cert: ClientCertificate)          : HttpRequest = copy(certificate     = Some(cert))
+  override def compressed      (compression: Compression)         : HttpRequest = copy(compressed      = Some(compression))
   override def version         (ver: HttpVersion)                 : HttpRequest = copy(version         = Some(ver))
 
   override def get    (                      expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, captcha: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse] = exec(expectations, Some(HttpMethod.Get) , None         )
@@ -820,7 +873,15 @@ case class Cookies(cache: Map[String, Set[ResponseCookie]]) {
 
 case class DefaultHttp() extends Http {
 
-  override def session(charset: Charset, baseUrl: String, ua: String, headers: Map[String, Set[String]], cookies: Cookies, proxy: Option[HttpProxy], certificate: Option[ClientCertificate])(using environment: HttpEnvironment): ZLT[HttpSession] = {
+  override def session(
+    charset     : Charset,
+    baseUrl     : String,
+    ua          : String,
+    headers     : Map[String, Set[String]],
+    cookies     : Cookies,
+    compressed  : Compression,
+    proxy       : Option[HttpProxy],
+    certificate : Option[ClientCertificate])(using environment: HttpEnvironment): ZLT[HttpSession] = {
     for {
       counter <- Ref.make(0)
       cookies <- Ref.make(cookies)
@@ -834,6 +895,7 @@ case class DefaultHttp() extends Http {
       baseUrl,
       ua,
       headers,
+      compressed,
       proxy,
       certificate
     )
