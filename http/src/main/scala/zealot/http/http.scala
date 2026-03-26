@@ -346,14 +346,20 @@ case class DefaultHttpSession(
   certificate : Option[ClientCertificate] = None
 ) extends HttpSession {
 
+  private def isAbsolute(url: String) = url.startsWith("http://") || url.startsWith("https://")
+
   private def domainGiven(url: String): ZLT[String] = {
-    if (url.startsWith("http://") || url.startsWith("https://")) {
-      (for {
-        abs <- ZIO.attempt(new URL(url).toURI)
-      } yield abs.getHost).mapError(e => BotError(HttpError, s"Error extraindo domínio de '$url'", Some(e)))
-    } else {
-      domainGiven(baseUrl + url)
-    }
+
+    def error(tried: String, cause: Option[Throwable] = None) = BotError(HttpError, s"Error extraindo domínio de '$tried'", cause)
+
+    def tryHost = for
+      abs <- ZIO.attempt(new URL(url).toURI).mapError(e => error(url, Some(e)))
+    yield abs.getHost
+
+    if      isAbsolute(url)           then tryHost
+    else if isAbsolute(baseUrl + url) then domainGiven(baseUrl + url)
+    else                                   ZIO.fail(error(baseUrl + url))
+
   }
 
   private def cookiesByDomain(domain: String): ZLT[Set[ResponseCookie]] = {

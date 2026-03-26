@@ -1,5 +1,9 @@
 # Zealot
 
+## Release v0.8.1
+LTS: 26/03/2026
+
+ - Fixed infinite loop at `zealot.http.DefaultHttpSession.domainGiven`
 
 ## Release v0.8.0
 LTS: 19/03/2026
