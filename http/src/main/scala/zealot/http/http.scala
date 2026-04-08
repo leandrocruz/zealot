@@ -840,7 +840,7 @@ object HtmlForm {
 }
 
 object Http {
-  def layer: ZLayer[Any, Nothing, DefaultHttp] = ZLayer.fromFunction(DefaultHttp.apply _)
+  def layer: ZLayer[Any, Nothing, DefaultHttp] = ZLayer.fromFunction(() => DefaultHttp())
 }
 
 object Cookies {

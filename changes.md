@@ -1,5 +1,8 @@
 # Zealot
 
+ - [Leandro] Bumped dependencies to match guara v2.0.0: zio 2.1.24, zio-json 0.9.0, zio-schema 1.8.3, zio-logging 2.5.3, zio-config 4.0.7, logback 1.5.18
+ - [Leandro] Fixed Scala 3 deprecation: `DefaultHttp.apply _` syntax
+
 ## Release v0.8.1
 LTS: 26/03/2026
 
