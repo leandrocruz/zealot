@@ -10,6 +10,7 @@ object curl {
   import zio.process.Command
 
   import java.net.{URLDecoder, URLEncoder}
+  import java.nio.charset.StandardCharsets
   import java.nio.charset.Charset
   import java.time.ZonedDateTime
   import scala.sys.process.*
@@ -352,7 +353,7 @@ object curl {
         val tail = cmd.tail
 
         for
-          proc <- Command(head, tail: _*).workingDirectory(ctx.root.toJava).run
+          proc <- Command(head, tail*).workingDirectory(ctx.root.toJava).run
           code <- proc.exitCode
           out  <- proc.stdout.string
           err  <- proc.stderr.string
@@ -436,7 +437,7 @@ object curl {
       def printRequest(count: Int): ZLT[Unit] = {
         def encodedUrlToParamMap(encodedURL: String): Map[String, String] = {
           encodedURL.split('?').toList match {
-            case _ :: params :: Nil => params.split("&").collect { case s"$key=$value" => key -> URLDecoder.decode(value) }.toMap
+            case _ :: params :: Nil => params.split("&").collect { case s"$key=$value" => key -> URLDecoder.decode(value, StandardCharsets.UTF_8) }.toMap
             case _                  => Map.empty[String, String]
           }
         }
