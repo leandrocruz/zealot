@@ -3,6 +3,13 @@
  - [Leandro] Bumped dependencies to match guara v2.0.0: zio 2.1.24, zio-json 0.9.0, zio-schema 1.8.3, zio-logging 2.5.3, zio-config 4.0.7, logback 1.5.18
  - [Leandro] Fixed Scala 3 deprecation: `DefaultHttp.apply _` syntax
 
+## Release v0.8.2
+LTS: 10/04/2026
+
+ - Fixed double-decompression in `HttpResponse.bodyAsString` when `Compression.All`/`Only` was in effect. `curl --compressed` decompresses the body transparently but leaves `Content-Encoding` in the response headers, so the old code tried to gunzip already-plain bytes and failed with `ZipException: Not in GZIP format`. Decompression is now driven by the magic bytes of the body file (`1f 8b` for gzip, zlib FCHECK rule for deflate) instead of the `Content-Encoding` header.
+ - Added a raw-deflate fallback in `HttpResponse.bodyAsString`. When magic bytes don't match gzip or zlib but `Content-Encoding: deflate` is present, the body is now inflated with `Inflater(nowrap = true)`, handling servers that send raw deflate without the zlib wrapper (non-compliant with RFC 7230 but common in the wild).
+ - Cleaned up Scala 3 compiler warnings: replaced `tail: _*` with `tail*` in `CurlHttpEngine`, replaced `DefaultHttp.apply _` with `() => DefaultHttp()` in `Http.layer`, and passed `StandardCharsets.UTF_8` explicitly to `URLDecoder.decode` in `CurlHttpEngine.printRequest` (the single-arg overload is deprecated).
+
 ## Release v0.8.1
 LTS: 26/03/2026
 

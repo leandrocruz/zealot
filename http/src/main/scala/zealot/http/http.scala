@@ -9,10 +9,10 @@ import zio.*
 import zio.json.*
 import zio.json.ast.Json
 
-import java.io.{ByteArrayOutputStream, FileInputStream, InputStream}
+import java.io.{BufferedInputStream, ByteArrayOutputStream, FileInputStream, InputStream}
 import java.net.{URI, URL, URLEncoder}
 import java.nio.charset.Charset
-import java.util.zip.{GZIPInputStream, InflaterInputStream}
+import java.util.zip.{GZIPInputStream, Inflater, InflaterInputStream}
 import java.time.format.DateTimeFormatter
 import java.time.{ZoneId, ZonedDateTime}
 import scala.jdk.CollectionConverters.*
@@ -532,25 +532,42 @@ case class DefaultHttpResponse(
 
     def read = {
 
-      def decompress(wrap: InputStream => InputStream): Task[String] = {
+      //Detect the actual compression from the first bytes of the body instead of trusting
+      //the Content-Encoding header. curl's --compressed flag decompresses transparently but
+      //leaves the original response headers untouched, so Content-Encoding may claim the body
+      //is compressed when it is not. Magic bytes are the source of truth; Content-Encoding is
+      //only consulted as a fallback for raw deflate, which has no magic bytes.
+      def wrapperGiven(bis: BufferedInputStream): InputStream = {
+        bis.mark(2)
+        val b0 = bis.read()
+        val b1 = bis.read()
+        bis.reset()
 
-        def open                   = ZIO.attemptBlocking(new FileInputStream(body.toJava))
-        def close(is: InputStream) = ZIO.succeed(is.close())
+        val isGzip = b0 == 0x1f && b1 == 0x8b
+        val isZlib = b0 == 0x78 && ((b0 * 256 + b1) % 31) == 0
 
-        ZIO.acquireReleaseWith(open)(close) { fis =>
-          ZIO.attemptBlocking {
-            val is  = wrap(fis)
-            val buf = new ByteArrayOutputStream()
-            is.transferTo(buf)
-            buf.toString(charset.map(_.name()).getOrElse("UTF-8"))
-          }
-        }
+        //HTTP Content-Encoding: deflate is supposed to be zlib-wrapped (RFC 7230), but some
+        //servers send raw deflate with no zlib header. Raw deflate has no reliable magic, so
+        //trust the header only after magic-byte detection has ruled out gzip and zlib.
+        def isRawDeflate = header("content-encoding").exists(_.trim.equalsIgnoreCase("deflate"))
+
+        if      isGzip       then new GZIPInputStream(bis)                          // gzip magic
+        else if isZlib       then new InflaterInputStream(bis)                      // zlib header
+        else if isRawDeflate then new InflaterInputStream(bis, new Inflater(true))  // raw deflate (nowrap)
+        else                      bis                                               // plain / unknown
       }
 
-      header("content-encoding").map(_.trim.toLowerCase) match
-        case Some("gzip")    => decompress(GZIPInputStream(_))
-        case Some("deflate") => decompress(InflaterInputStream(_))
-        case _               => ZIO.attemptBlocking(body.contentAsString)
+      def open                   = ZIO.attemptBlocking(new BufferedInputStream(new FileInputStream(body.toJava)))
+      def close(is: InputStream) = ZIO.succeed(is.close())
+
+      ZIO.acquireReleaseWith(open)(close) { bis =>
+        ZIO.attemptBlocking {
+          val is  = wrapperGiven(bis)
+          val buf = new ByteArrayOutputStream()
+          is.transferTo(buf)
+          buf.toString(charset.map(_.name()).getOrElse("UTF-8"))
+        }
+      }
     }
 
     if isTextContent then
