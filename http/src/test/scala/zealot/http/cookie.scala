@@ -89,42 +89,4 @@ class CookieTest extends AnyFlatSpec with should.Matchers {
       cookie.httpOnly shouldBe Some(true)
     }
   }
-
-  it should "update the cookie jar" in {
-
-    val c1 = DefaultResponseCookie("", "name", "value")
-    val c2 = DefaultResponseCookie("", "name", "other")
-    val c3 = DefaultResponseCookie("", "other", "value")
-
-    val jar = Cookies(Map.empty)
-    val jar2 = jar.updateDomain("a", c1 , false)
-    jar2.cache.keySet should contain only("a")
-    jar2.cache.get("a") match
-      case None      => fail("should not be empty")
-      case Some(set) =>  set should contain only(c1)
-
-    val jar3 = jar2.updateDomain("a", c2 , false)
-    jar3.cache.keySet should contain only ("a")
-    jar3.cache.get("a") match
-      case None      => fail("should not be empty")
-      case Some(set) => set should contain only (c2)
-
-    val jar4 = jar3.updateDomain("a", c3, false)
-    jar4.cache.keySet should contain only("a")
-    jar4.cache.get("a") match
-      case None      => fail("should not be empty")
-      case Some(set) => set should contain only (c2, c3)
-
-    val jar5 = jar4.updateDomain("a", c1, true)
-    jar5.cache.keySet should contain only ("a")
-    jar5.cache.get("a") match
-      case None      => fail("should not be empty")
-      case Some(set) => set should contain only(c3)
-
-    val jar6 = jar5.updateDomain("a", c3, true)
-    jar6.cache.keySet should contain only ("a")
-    jar6.cache.get("a") match
-      case None      => fail("should not be empty")
-      case Some(set) => set shouldBe empty
-  }
 }

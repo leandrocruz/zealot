@@ -1,5 +1,7 @@
 # Zealot
 
+ - Using the native curl cookie jar
+
 ## Release v0.8.2
 LTS: 10/04/2026
 
