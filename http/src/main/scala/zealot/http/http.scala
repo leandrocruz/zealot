@@ -44,6 +44,24 @@ trait ResponseCookie extends RequestCookie {
   def url       : String // the request url the received this cookie as response
   def path      : Option[String]
   def domain    : Option[String]
+  /**
+   * Per RFC 6265 §5.3 step 6: a cookie set without a `Domain` attribute is
+   * "host-only" — it must be sent only to the exact host that originated it,
+   * never to subdomains. A cookie set with a `Domain` attribute is a "domain
+   * cookie" and matches the domain plus all subdomains.
+   *
+   * The wire encodes this distinction by attribute presence/absence.
+   * Storage formats (Netscape cookies.txt column 2, Chrome's cookies API
+   * `domain` field) and matchers all need this bit. Folding it into
+   * `domain: Option[String]` via leading-dot conventions silently broadens
+   * cookie scope on round-trip — see the host-only/domain conflation that
+   * caused our extension to create domain-cookie twins of host-only cookies
+   * when calling `chrome.cookies.set` with a populated `domain` field.
+   *
+   * Reader/parser sites must set this explicitly. Default is `false` only
+   * to keep older constructors compiling; new code should always be explicit.
+   */
+  def hostOnly  : Boolean
   def secure    : Option[Boolean]
   def httpOnly  : Option[Boolean]
   def expires   : Option[ZonedDateTime]
@@ -239,6 +257,7 @@ case class DefaultResponseCookie(
   value    : String,
   domain   : Option[String]        = None,
   path     : Option[String]        = None,
+  hostOnly : Boolean               = false,
   secure   : Option[Boolean]       = None,
   httpOnly : Option[Boolean]       = None,
   maxAge   : Option[Long]          = None,
@@ -297,11 +316,11 @@ object DefaultCookie {
 
     val str1 = if(dropDoubleQuotes && str0.startsWith("\"")) str0.drop(1)      else str0
     val str2 = if(dropDoubleQuotes && str1.endsWith("\""))   str1.dropRight(1) else str1
-    str2
+    val parsed = str2
       .split(";")
       .map(_.trim)
       .zipWithIndex
-      .foldLeft(DefaultResponseCookie(url, "", "")) { (cookie, tuple) =>
+      .foldLeft(DefaultResponseCookie(url, "", "", hostOnly = true)) { (cookie, tuple) =>
         val slice = tuple._1
         val index = tuple._2
         if(index == 0) {
@@ -311,10 +330,12 @@ object DefaultCookie {
           if(slice.contains("=")) {
             val (name, value) = pairGiven(slice)
             name.toLowerCase match {
-              case "expires"  => cookie.copy(expires = Some(parseDate(value)))
-              case "domain"   => cookie.copy(domain  = Some(value))
-              case "path"     => cookie.copy(path    = Some(value))
-              case "max-age"  => cookie.copy(maxAge  = Some(value.toLong))
+              case "expires"  => cookie.copy(expires  = Some(parseDate(value)))
+              // RFC 6265 §5.2.3: strip leading dot. §5.3 step 6: presence of
+              // Domain attribute makes the cookie a domain cookie (hostOnly=false).
+              case "domain"   => cookie.copy(domain   = Some(value.stripPrefix(".")), hostOnly = false)
+              case "path"     => cookie.copy(path     = Some(value))
+              case "max-age"  => cookie.copy(maxAge   = Some(value.toLong))
               case "samesite" => cookie
               case _          => cookie
             }
@@ -328,6 +349,13 @@ object DefaultCookie {
           }
         }
       }
+
+    // For host-only cookies (no Domain attribute), §5.3 step 6 sets cookie-domain
+    // to the canonical request host. Populate `domain` so downstream matchers and
+    // serializers don't have to re-derive it from `url`.
+    if (parsed.hostOnly && parsed.domain.isEmpty)
+      parsed.copy(domain = Try(new URI(url).getHost).toOption.filter(_ != null).map(_.toLowerCase))
+    else parsed
   }
 }
 
@@ -834,7 +862,7 @@ sealed trait CookieJar {
 case class CurlCookieJar(file: File) extends CookieJar {
 
   override def all: Set[ResponseCookie]                      = NetscapeCookieFile.read(file)
-  override def byDomain(domain: String): Set[ResponseCookie] = all.filter(c => NetscapeCookieFile.domainMatches(domain, c.domain))
+  override def byDomain(domain: String): Set[ResponseCookie] = all.filter(c => NetscapeCookieFile.matches(domain, c))
 }
 
 /**
@@ -879,18 +907,18 @@ object NetscapeCookieFile {
   }
 
   /**
-   * RFC 6265 §5.1.3 domain matching, applied to our Netscape-derived domain
-   * field. The cookie's `domain` carries the host-only/domain distinction
-   * via the leading-dot convention (`.example.com` = subdomain match,
-   * `example.com` = exact host).
+   * RFC 6265 §5.1.3 host/domain matching driven by the `hostOnly` flag.
+   * - hostOnly = true  : request host must equal cookie domain (case-insensitive).
+   * - hostOnly = false : request host must equal OR be a subdomain of cookie domain.
    */
-  def domainMatches(requestHost: String, cookieDomain: Option[String]): Boolean = {
-    cookieDomain match {
-      case None       => false
-      case Some(d) if d.startsWith(".") =>
-        val bare = d.drop(1)
-        requestHost == bare || requestHost.endsWith("." + bare)
-      case Some(d)    => requestHost.equalsIgnoreCase(d)
+  def matches(requestHost: String, cookie: ResponseCookie): Boolean = {
+    cookie.domain match {
+      case None    => false
+      case Some(d) =>
+        val bare = d.stripPrefix(".").toLowerCase
+        val host = requestHost.toLowerCase
+        if (cookie.hostOnly) host == bare
+        else                 host == bare || host.endsWith("." + bare)
     }
   }
 
@@ -911,14 +939,18 @@ object NetscapeCookieFile {
         val name       = cols(5)
         val value      = cols(6)
 
-        val domain = if (includeSub && !rawDomain.startsWith(".")) "." + rawDomain else rawDomain
+        // Column 2 carries the host-only-vs-domain distinction. Strip any
+        // leading dot from column 1 so `domain` always holds the bare
+        // canonical value (RFC 6265 §5.2.3 / §5.3 step 6).
+        val bareDomain = rawDomain.stripPrefix(".")
 
         Some(DefaultResponseCookie(
           url      = "",
           name     = name,
           value    = value,
-          domain   = Some(domain),
+          domain   = Some(bareDomain),
           path     = Some(path),
+          hostOnly = !includeSub,
           secure   = Some(secure),
           httpOnly = Some(httpOnly),
           expires  = expires.map(s => ZonedDateTime.ofInstant(java.time.Instant.ofEpochSecond(s), ZoneId.of("UTC")))
@@ -929,12 +961,8 @@ object NetscapeCookieFile {
 
   private def formatLine(cookie: ResponseCookie): String = {
 
-    val (rawDomain, includeSub) = cookie.domain match {
-      case Some(d) if d.startsWith(".") => (d.drop(1), true)
-      case Some(d)                      => (d        , false)
-      case None                         => (hostOf(cookie.url).getOrElse(""), false)
-    }
-
+    val rawDomain  = cookie.domain.map(_.stripPrefix(".")).getOrElse(hostOf(cookie.url).getOrElse(""))
+    val includeSub = !cookie.hostOnly
     val prefix     = if (cookie.httpOnly.contains(true)) HttpOnlyPrefix else ""
     val path       = cookie.path.getOrElse("/")
     val secure     = if (cookie.secure.contains(true)) "TRUE" else "FALSE"
