@@ -3,7 +3,7 @@ import sbt.Resolver
 
 ThisBuild / scalaVersion := "3.7.2"
 ThisBuild / organization := "zealot"
-ThisBuild / version      := "v0.8.2"
+ThisBuild / version      := "v0.9.0-SNAPSHOT"
 ThisBuild / publishTo := {
   val host = "artifactregistry://southamerica-east1-maven.pkg.dev/oystr-cloud-test"
   if (isSnapshot.value) Some("Google Artifact Registry" at host + "/snapshots")

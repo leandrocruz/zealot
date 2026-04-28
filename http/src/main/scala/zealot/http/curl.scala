@@ -197,7 +197,7 @@ object curl {
       def build(count: Int, url: String, headersFile: File, bodyFile: File): Task[Seq[String]] = {
 
         def curl: Seq[String] = {
-          options match
+          options.orElse(session.options) match
             case Some(CurlOptions(binary)) => Seq(binary, "-k")
             case _                         => Seq("curl", "-k")
         }
@@ -235,8 +235,12 @@ object curl {
         }
 
         def cookies: Seq[String] = {
-          //Seq("--cookie-jar", "/tmp/cookies", "--cookie", "/tmp/cookies")
           request.cookies.toSeq.flatMap(cookie => Seq("--cookie", s"${cookie.name}=${cookie.value}"))
+        }
+
+        def cookieJar: Seq[String] = {
+          session.cookies match
+            case it: CurlCookieJar => Seq("--cookie-jar", it.file.toString, "--cookie", it.file.toString)
         }
 
         def headerFields: Seq[String] = {
@@ -344,7 +348,7 @@ object curl {
         }
 
         ZIO.attempt(
-           curl ++ version ++ requestMethod ++ compressed ++ proxy ++ certificate ++ cookies ++ headerFields ++ formFields ++ dumpHeaders ++ dumpBody ++ dumpOutput ++ Seq(url)
+           curl ++ version ++ requestMethod ++ compressed ++ proxy ++ certificate ++ cookieJar ++ cookies ++ headerFields ++ formFields ++ dumpHeaders ++ dumpBody ++ dumpOutput ++ Seq(url)
         )
       }
 
@@ -479,18 +483,18 @@ object curl {
       val tag = request.name.map(name => "-"+name).getOrElse("")
       val url = getUrl
       for {
-        count        <- session.count
-        reqFile      <- ensureFile(name = s"resp-${count}${tag}.req")           .mapError(onError("Error creating request file"     ))
-        resFile      <- ensureFile(name = s"resp-${count}${tag}.res")           .mapError(onError("Error creating response file"    ))
-        headersFile  <- ensureFile(name = s"resp-${count}${tag}.headers")       .mapError(onError("Error creating headers file"     ))
-        _            <- printRequest(count)
-        cmd          <- build(count, url, headersFile, resFile)                 .mapError(onError("Error building curl command line"))
-        _            <- dumpRequest(cmd, reqFile)                               .mapError(onError("Error dumping request"           ))
-        output       <- run(cmd)                                                .mapError(onError("Error executing curl"            ))
-        response     <- ResponseParser.parse(url, headersFile, resFile, output) .mapError(onError("Error parsing curl response"     ))
-        now          <- Clock.currentDateTime
-        _            <- printResponse(now.toZonedDateTime, response)
-        renamed      <- renameResponseFile(response, resFile)                   .mapError(onError("Error renaming response file"    ))
+        count         <- session.count
+        reqFile       <- ensureFile(name = s"resp-${count}${tag}.req")           .mapError(onError("Error creating request file"     ))
+        resFile       <- ensureFile(name = s"resp-${count}${tag}.res")           .mapError(onError("Error creating response file"    ))
+        headersFile   <- ensureFile(name = s"resp-${count}${tag}.headers")       .mapError(onError("Error creating headers file"     ))
+        _             <- printRequest(count)
+        cmd           <- build(count, url, headersFile, resFile)                 .mapError(onError("Error building curl command line"))
+        _             <- dumpRequest(cmd, reqFile)                               .mapError(onError("Error dumping request"           ))
+        output        <- run(cmd)                                                .mapError(onError("Error executing curl"            ))
+        response      <- ResponseParser.parse(url, headersFile, resFile, output) .mapError(onError("Error parsing curl response"     ))
+        now           <- Clock.currentDateTime
+        _             <- printResponse(now.toZonedDateTime, response)
+        renamed       <- renameResponseFile(response, resFile)                   .mapError(onError("Error renaming response file"    ))
       } yield renamed
     }
   }

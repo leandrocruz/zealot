@@ -1,5 +1,10 @@
 # Zealot
 
+ - Using the native curl cookie jar (via `CookieJar`)
+ - Added `HttpSession.options` 
+ - Added `ResponseCookie.hostOnly` wich is required to determine the cookie "url" in other contexts, like google chrome extensions
+ - Removed legacy code `HttpSession.rebase`
+
 ## Release v0.8.2
 LTS: 10/04/2026
 
