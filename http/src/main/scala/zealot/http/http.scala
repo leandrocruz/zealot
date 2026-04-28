@@ -214,6 +214,7 @@ trait HttpSession {
   def compressed   : Compression
   def certificate  : Option[ClientCertificate]
   def proxy        : Option[HttpProxy]
+  def options      : Option[HttpOptions]
   def update(request: ExecutableHttpRequest, response: HttpResponse) : ZLT[Unit]
   def requestGiven(url: String   , version: Option[HttpVersion])     : ZLT[HttpRequest]
   def requestGiven(form: HtmlForm, version: Option[HttpVersion])     : ZLT[HttpRequest]
@@ -232,6 +233,7 @@ trait Http {
     compressed  : Compression               = Compression.Off,
     proxy       : Option[HttpProxy]         = None,
     certificate : Option[ClientCertificate] = None,
+    options     : Option[HttpOptions]       = None,
   )(using HttpEnvironment, HttpContext) : ZLT[HttpSession]
 
   def url(url: String)            (using HttpSession): ZLT[HttpRequest]
@@ -370,7 +372,8 @@ case class DefaultHttpSession(
   headers     : Map[String, Set[String]],
   compressed  : Compression               = Compression.Off,
   proxy       : Option[HttpProxy]         = None,
-  certificate : Option[ClientCertificate] = None
+  certificate : Option[ClientCertificate] = None,
+  options     : Option[HttpOptions]       = None
 ) extends HttpSession {
 
   private def isAbsolute(url: String) = url.startsWith("http://") || url.startsWith("https://")
@@ -996,7 +999,8 @@ case class DefaultHttp() extends Http {
     cookies     : Set[ResponseCookie],
     compressed  : Compression,
     proxy       : Option[HttpProxy],
-    certificate : Option[ClientCertificate])(using environment: HttpEnvironment, ctx: HttpContext): ZLT[HttpSession] = {
+    certificate : Option[ClientCertificate],
+    options     : Option[HttpOptions])(using environment: HttpEnvironment, ctx: HttpContext): ZLT[HttpSession] = {
 
     def buildCookieJar: ZLT[CookieJar] = ZIO.attemptBlocking {
       val file = ctx.root / "cookies.txt"
@@ -1020,7 +1024,8 @@ case class DefaultHttp() extends Http {
       headers,
       compressed,
       proxy,
-      certificate
+      certificate,
+      options
     )
   }
 

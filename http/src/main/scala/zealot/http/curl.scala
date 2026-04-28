@@ -197,7 +197,7 @@ object curl {
       def build(count: Int, url: String, headersFile: File, bodyFile: File): Task[Seq[String]] = {
 
         def curl: Seq[String] = {
-          options match
+          options.orElse(session.options) match
             case Some(CurlOptions(binary)) => Seq(binary, "-k")
             case _                         => Seq("curl", "-k")
         }
