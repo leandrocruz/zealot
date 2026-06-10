@@ -228,8 +228,8 @@ object curl {
           request.method match {
             case HttpMethod.Get    => Seq("-X", "GET")
             case HttpMethod.Post   => Seq("-X", "POST")
-            case HttpMethod.Put    => Seq("-X", "HEAD")
-            case HttpMethod.Head   => Seq("-X", "PUT")
+            case HttpMethod.Put    => Seq("-X", "PUT")
+            case HttpMethod.Head   => Seq("-X", "HEAD")
             case HttpMethod.Delete => Seq("-X", "DELETE")
           }
         }
@@ -293,7 +293,7 @@ object curl {
           def encodeDataBinary(pairs: Seq[(String, String)]): Seq[String] = ???
 
           request.method match {
-            case HttpMethod.Post =>
+            case HttpMethod.Post | HttpMethod.Put =>
 
               val pairs = for {
                 (name, values) <- request.fields.toSeq.sortBy(_._1)
@@ -318,8 +318,8 @@ object curl {
 
         def dumpBody: Seq[String] = {
           (request.method, request.body) match
-            case (HttpMethod.Post, JsonBody(ast))       => Seq("--json"     , ast.toString())
-            case (HttpMethod.Post, StringBody(text, _)) => Seq("--data-raw" , text)
+            case (HttpMethod.Post | HttpMethod.Put, JsonBody(ast))       => Seq("--json"     , ast.toString())
+            case (HttpMethod.Post | HttpMethod.Put, StringBody(text, _)) => Seq("--data-raw" , text)
             case _  => Seq.empty
 
         }
@@ -448,7 +448,7 @@ object curl {
 
         val params = request.parameters ++ encodedUrlToParamMap(targetUrl).view.mapValues(Set(_))
 
-        val data = if(request.method != HttpMethod.Post) Seq.empty else {
+        val data = if(request.method != HttpMethod.Post && request.method != HttpMethod.Put) Seq.empty else {
           for {
             (name, values) <- request.fields.toSeq.sortBy(_._1)
             value          <- values
