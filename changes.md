@@ -1,6 +1,9 @@
 # Zealot
 
- - Added PUT HTTP Method
+## Release v1.1.0
+LTS: 10/06/2026
+
+ - Added PUT HTTP Method (Sirea TRF1)
 
 ## Release v1.0.0
 LTS: 28/04/2026
