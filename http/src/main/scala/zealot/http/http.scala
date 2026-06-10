@@ -182,6 +182,8 @@ trait ExecutableHttpRequest {
   def get     (options: HttpOptions, expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse]
   def post    (                      expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse]
   def post    (options: HttpOptions, expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse]
+  def put     (                      expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse]
+  def put     (options: HttpOptions, expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse]
 }
 
 trait HttpEngine {
@@ -432,6 +434,7 @@ case class DefaultHttpSession(
       val method = form.method.toLowerCase() match {
         case "get"  => Some(HttpMethod.Get)
         case "post" => Some(HttpMethod.Post)
+        case "put"  => Some(HttpMethod.Put)
         case _      => None
       }
 
@@ -711,6 +714,8 @@ case class DefaultHttpRequest (
   override def get    (options: HttpOptions, expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, captcha: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse] = exec(expectations, Some(HttpMethod.Get) , Some(options))
   override def post   (                      expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, captcha: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse] = exec(expectations, Some(HttpMethod.Post), None         )
   override def post   (options: HttpOptions, expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, captcha: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse] = exec(expectations, Some(HttpMethod.Post), Some(options))
+  override def put    (                      expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, captcha: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse] = exec(expectations, Some(HttpMethod.Put) , None         )
+  override def put    (options: HttpOptions, expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, captcha: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse] = exec(expectations, Some(HttpMethod.Put) , Some(options))
   override def execute(                      expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, captcha: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse] = exec(expectations, None                 , None         )
   override def execute(options: HttpOptions, expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, captcha: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse] = exec(expectations, None                 , Some(options))
 

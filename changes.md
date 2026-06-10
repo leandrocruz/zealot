@@ -1,5 +1,7 @@
 # Zealot
 
+ - Added PUT HTTP Method
+
 ## Release v1.0.0
 LTS: 28/04/2026
 
