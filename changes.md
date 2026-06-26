@@ -1,5 +1,8 @@
 # Zealot
 
+## Release v1.2.0
+LTS: 26/06/2026
+
  - Added TLS version pinning via `HttpRequest.tls(Tls1_2 | Tls1_3)` — renders `--tlsv1.x --tls-max 1.x`. Default is unchanged (no flag) when not set. Needed for gov.br certificate login (`certificado.sso.acesso.gov.br`): the F5 BigIP downgrades TLS 1.3→1.2 mid-handshake while requesting the client cert, which OpenSSL 3.0 aborts with `curl (35) data between ccs and finished`. Pinning TLS 1.2 from the ClientHello avoids the downgrade.
  - Reverted the native curl cookie jar introduced in v1.0.0 (`CookieJar`/`CurlCookieJar`, `HttpSession.options`, `ResponseCookie.hostOnly`, removal of `HttpSession.rebase`). v1.0.0 stopped persisting `Set-Cookie` in `DefaultHttpSession.update` and delegated cookie state to curl's jar, which broke bot logins. Cookie handling is back to the v0.8.2 behavior (explicit `--cookie` per request, cookies persisted in-session).
  - Kept the PUT HTTP Method from v1.1.0 (Sirea TRF1), including the fix for the swapped `Put`/`Head` curl verbs.
