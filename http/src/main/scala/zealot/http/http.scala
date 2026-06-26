@@ -44,24 +44,6 @@ trait ResponseCookie extends RequestCookie {
   def url       : String // the request url the received this cookie as response
   def path      : Option[String]
   def domain    : Option[String]
-  /**
-   * Per RFC 6265 §5.3 step 6: a cookie set without a `Domain` attribute is
-   * "host-only" — it must be sent only to the exact host that originated it,
-   * never to subdomains. A cookie set with a `Domain` attribute is a "domain
-   * cookie" and matches the domain plus all subdomains.
-   *
-   * The wire encodes this distinction by attribute presence/absence.
-   * Storage formats (Netscape cookies.txt column 2, Chrome's cookies API
-   * `domain` field) and matchers all need this bit. Folding it into
-   * `domain: Option[String]` via leading-dot conventions silently broadens
-   * cookie scope on round-trip — see the host-only/domain conflation that
-   * caused our extension to create domain-cookie twins of host-only cookies
-   * when calling `chrome.cookies.set` with a populated `domain` field.
-   *
-   * Reader/parser sites must set this explicitly. Default is `false` only
-   * to keep older constructors compiling; new code should always be explicit.
-   */
-  def hostOnly  : Boolean
   def secure    : Option[Boolean]
   def httpOnly  : Option[Boolean]
   def expires   : Option[ZonedDateTime]
@@ -129,6 +111,10 @@ case object Http1_1 extends HttpVersion
 case object Http2   extends HttpVersion
 case object Http3   extends HttpVersion
 
+sealed trait TlsVersion
+case object Tls1_2 extends TlsVersion
+case object Tls1_3 extends TlsVersion
+
 sealed trait ClientCertificate
 case class PemClientCertificate(file: File)                              extends ClientCertificate
 case class Pkcs12ClientCertificate(file: File, password: Option[String]) extends ClientCertificate
@@ -149,6 +135,7 @@ trait HttpRequest {
   def maxRedirects      (max: Int)                           : HttpRequest
   def certificate       (cert: ClientCertificate)            : HttpRequest
   def version           (ver: HttpVersion)                   : HttpRequest
+  def tls               (ver: TlsVersion)                    : HttpRequest
   def body              (body: HttpBody)                     : HttpRequest
   def body[T]           (body: T)(using enc: JsonEncoder[T]) : ZLT[HttpRequest]
   def compressed        (compression: Compression = Compression.All) : HttpRequest
@@ -176,6 +163,7 @@ trait ExecutableHttpRequest {
   def setUserAgent    : Boolean
   def certificate     : Option[ClientCertificate]
   def version         : Option[HttpVersion]
+  def tls             : Option[TlsVersion]
   def execute (                      expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse]
   def execute (options: HttpOptions, expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse]
   def get     (                      expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, interceptor: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse]
@@ -216,11 +204,11 @@ trait HttpSession {
   def compressed   : Compression
   def certificate  : Option[ClientCertificate]
   def proxy        : Option[HttpProxy]
-  def options      : Option[HttpOptions]
   def update(request: ExecutableHttpRequest, response: HttpResponse) : ZLT[Unit]
   def requestGiven(url: String   , version: Option[HttpVersion])     : ZLT[HttpRequest]
   def requestGiven(form: HtmlForm, version: Option[HttpVersion])     : ZLT[HttpRequest]
-  def cookies                      : CookieJar
+  def rebase(baseUrl: String)      : ZLT[HttpSession]
+  def cookies                      : ZLT[Cookies]
   def cookiesGiven(url: String)    : ZLT[Seq[ResponseCookie]]
   def count                        : ZLT[Int]
 }
@@ -231,15 +219,14 @@ trait Http {
     baseUrl     : String,
     ua          : String,
     headers     : Map[String, Set[String]]  = Map.empty,
-    cookies     : Set[ResponseCookie]       = Set.empty,
+    cookies     : Cookies                   = Cookies.from(Seq.empty),
     compressed  : Compression               = Compression.Off,
     proxy       : Option[HttpProxy]         = None,
     certificate : Option[ClientCertificate] = None,
-    options     : Option[HttpOptions]       = None,
-  )(using HttpEnvironment, HttpContext) : ZLT[HttpSession]
+  )(using environment: HttpEnvironment) : ZLT[HttpSession]
 
-  def url(url: String)            (using HttpSession): ZLT[HttpRequest]
-  def requestGiven(form: HtmlForm)(using HttpSession): ZLT[HttpRequest]
+  def url(url: String)            (using session: HttpSession): ZLT[HttpRequest]
+  def requestGiven(form: HtmlForm)(using session: HttpSession): ZLT[HttpRequest]
 }
 
 trait Script
@@ -261,7 +248,6 @@ case class DefaultResponseCookie(
   value    : String,
   domain   : Option[String]        = None,
   path     : Option[String]        = None,
-  hostOnly : Boolean               = false,
   secure   : Option[Boolean]       = None,
   httpOnly : Option[Boolean]       = None,
   maxAge   : Option[Long]          = None,
@@ -320,11 +306,11 @@ object DefaultCookie {
 
     val str1 = if(dropDoubleQuotes && str0.startsWith("\"")) str0.drop(1)      else str0
     val str2 = if(dropDoubleQuotes && str1.endsWith("\""))   str1.dropRight(1) else str1
-    val parsed = str2
+    str2
       .split(";")
       .map(_.trim)
       .zipWithIndex
-      .foldLeft(DefaultResponseCookie(url, "", "", hostOnly = true)) { (cookie, tuple) =>
+      .foldLeft(DefaultResponseCookie(url, "", "")) { (cookie, tuple) =>
         val slice = tuple._1
         val index = tuple._2
         if(index == 0) {
@@ -334,12 +320,10 @@ object DefaultCookie {
           if(slice.contains("=")) {
             val (name, value) = pairGiven(slice)
             name.toLowerCase match {
-              case "expires"  => cookie.copy(expires  = Some(parseDate(value)))
-              // RFC 6265 §5.2.3: strip leading dot. §5.3 step 6: presence of
-              // Domain attribute makes the cookie a domain cookie (hostOnly=false).
-              case "domain"   => cookie.copy(domain   = Some(value.stripPrefix(".")), hostOnly = false)
-              case "path"     => cookie.copy(path     = Some(value))
-              case "max-age"  => cookie.copy(maxAge   = Some(value.toLong))
+              case "expires"  => cookie.copy(expires = Some(parseDate(value)))
+              case "domain"   => cookie.copy(domain  = Some(value))
+              case "path"     => cookie.copy(path    = Some(value))
+              case "max-age"  => cookie.copy(maxAge  = Some(value.toLong))
               case "samesite" => cookie
               case _          => cookie
             }
@@ -353,20 +337,13 @@ object DefaultCookie {
           }
         }
       }
-
-    // For host-only cookies (no Domain attribute), §5.3 step 6 sets cookie-domain
-    // to the canonical request host. Populate `domain` so downstream matchers and
-    // serializers don't have to re-derive it from `url`.
-    if (parsed.hostOnly && parsed.domain.isEmpty)
-      parsed.copy(domain = Try(new URI(url).getHost).toOption.filter(_ != null).map(_.toLowerCase))
-    else parsed
   }
 }
 
 case class DefaultHttpSession(
   counter     : Ref[Int],
   history     : Ref[Seq[(ZonedDateTime, String)]],
-  cookieJar   : CookieJar,
+  ref         : Ref[Cookies],
   environment : HttpEnvironment,
   charset     : Charset,
   baseUrl     : String, //TODO check if baseUrl is a valid, absolute url
@@ -374,8 +351,7 @@ case class DefaultHttpSession(
   headers     : Map[String, Set[String]],
   compressed  : Compression               = Compression.Off,
   proxy       : Option[HttpProxy]         = None,
-  certificate : Option[ClientCertificate] = None,
-  options     : Option[HttpOptions]       = None
+  certificate : Option[ClientCertificate] = None
 ) extends HttpSession {
 
   private def isAbsolute(url: String) = url.startsWith("http://") || url.startsWith("https://")
@@ -395,20 +371,36 @@ case class DefaultHttpSession(
   }
 
   private def cookiesByDomain(domain: String): ZLT[Set[ResponseCookie]] = {
-    ZIO.succeed(cookieJar.byDomain(domain))
+    for {
+      cookies <- ref.get
+    } yield cookies.cache.view.filterKeys(domain.endsWith).values.toSet.flatten
   }
 
   override def count: ZLT[Int] = counter.getAndUpdate(_ + 1)
   override def update(request: ExecutableHttpRequest, response: HttpResponse): ZLT[Unit] = {
 
+//    println(request.url)
+//    println(response.requestedUrl)
+//    response.headers.filter(_._1 == "set-cookie").foreach {
+//      case (name, values) =>
+//        values.foreach(v => println(s"[$name] = [$v]"))
+//    }
+
     def update: Task[Unit] = {
+
+      def update(now: ZonedDateTime, domain: String)(cookie: ResponseCookie): Task[Unit] = {
+        val remove = cookie.expires.exists(_.isBefore(now))
+        ref.update { _.updateDomain(domain, cookie, remove) }
+      }
 
       given HttpSession = this
 
-      for
-        now <- Clock.currentDateTime.map(_.toZonedDateTime)
-        _   <- history.update(_ :+ (now, response.requestedUrl))
-      yield ()
+      for {
+        now     <- Clock.currentDateTime.map(_.toZonedDateTime)
+        _       <- history.update(_ :+ (now, response.requestedUrl))
+        domain  <- domainGiven(request.url).mapError(be => be.cause.map(new Exception(_)).getOrElse(new Exception(s"Error extraindo domínio da url '${request.url}'")))
+        _       <- ZIO.foreach(response.cookies) { update(now, domain) }
+      } yield ZIO.unit
     }
 
     update.mapError(e => BotError(UnexpectedError, "Erro atualizando estado interno do navegador", Some(e)))
@@ -455,7 +447,24 @@ case class DefaultHttpSession(
     build.mapError(_.as(HtmlDocumentError, "Erro ao criar requisição baseada no formulário"))
   }
 
-  override def cookies = cookieJar
+  override def rebase(url: String): ZLT[HttpSession] = {
+    for {
+      cookies  <- ref.get
+      original <- domainGiven(baseUrl)
+      domain   <- domainGiven(url)
+      newRef  <- cookies.cache.get(original) match
+        case None      => ZIO.succeed(ref)
+        case Some(set) =>
+          val a = cookies.cache - baseUrl
+          val b = a + (domain -> set)
+          Ref.make(Cookies(b))
+
+    } yield copy(baseUrl = url, ref = newRef)
+  }
+
+  override def cookies: ZLT[Cookies] = {
+    ref.get
+  }
 
   override def cookiesGiven(url: String): ZLT[Seq[ResponseCookie]] = {
     for {
@@ -681,6 +690,7 @@ case class DefaultHttpRequest (
   setUserAgent    : Boolean                   = true,
   compressed      : Option[Compression]       = None,
   version         : Option[HttpVersion]       = None,
+  tls             : Option[TlsVersion]        = None,
   body            : HttpBody                  = NoBody) extends HttpRequest, ExecutableHttpRequest {
 
   private def update(map: Map[String, Set[String]])(name: String, value: Option[String]): Map[String, Set[String]] = {
@@ -709,6 +719,7 @@ case class DefaultHttpRequest (
   override def certificate     (cert: ClientCertificate)          : HttpRequest = copy(certificate     = Some(cert))
   override def compressed      (compression: Compression)         : HttpRequest = copy(compressed      = Some(compression))
   override def version         (ver: HttpVersion)                 : HttpRequest = copy(version         = Some(ver))
+  override def tls             (ver: TlsVersion)                  : HttpRequest = copy(tls             = Some(ver))
 
   override def get    (                      expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, captcha: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse] = exec(expectations, Some(HttpMethod.Get) , None         )
   override def get    (options: HttpOptions, expectations: Expectation*)(using ctx: HttpContext, session: HttpSession, captcha: HttpInterceptor, engine: HttpEngine, trace: Trace): ZLT[HttpResponse] = exec(expectations, Some(HttpMethod.Get) , Some(options))
@@ -862,136 +873,39 @@ object Http {
   def layer: ZLayer[Any, Nothing, DefaultHttp] = ZLayer.fromFunction(() => DefaultHttp())
 }
 
-sealed trait CookieJar {
-  def all                     : Set[ResponseCookie]
-  def byDomain(domain: String): Set[ResponseCookie]
-}
+object Cookies {
 
-case class CurlCookieJar(file: File) extends CookieJar {
+  def domainGiven(name: String): String = if(name.startsWith(".")) name.drop(1) else name
 
-  override def all: Set[ResponseCookie]                      = NetscapeCookieFile.read(file)
-  override def byDomain(domain: String): Set[ResponseCookie] = all.filter(c => NetscapeCookieFile.matches(domain, c))
-}
-
-/**
- * Reads and writes the Netscape "cookies.txt" file format used by curl's
- * --cookie / --cookie-jar flags.
- *
- * Format: 7 tab-separated columns per line.
- *   1. domain               (host or .domain.tld; "#HttpOnly_" prefix marks HttpOnly)
- *   2. include-subdomains   (TRUE for domain cookies, FALSE for host-only)
- *   3. path                 (defaults to "/")
- *   4. secure               (TRUE / FALSE)
- *   5. expires              (unix epoch seconds; 0 means session cookie)
- *   6. name
- *   7. value
- *
- * Lines starting with "#" are comments. Empty lines are ignored.
- *
- * See: https://curl.se/docs/http-cookies.html
- */
-object NetscapeCookieFile {
-
-  private val HttpOnlyPrefix = "#HttpOnly_"
-
-  private val Header =
-    """# Netscape HTTP Cookie File
-      |# https://curl.se/docs/http-cookies.html
-      |# This file was generated by zealot. Edit at your own risk.
-      |""".stripMargin
-
-  def read(file: File): Set[ResponseCookie] = {
-    if (!file.exists) Set.empty
-    else file.lineIterator
-      .map(_.trim)
-      .filter(line => line.nonEmpty)
-      .flatMap(parseLine)
+  def from(cache: Seq[ResponseCookie]): Cookies = {
+    val init = cache
+      .filter(_.domain.isDefined)
       .toSet
+      .map(cookie => (domainGiven(cookie.domain.get), cookie))
+      .groupMap(_._1)(_._2)
+
+    Cookies(init)
+  }
+}
+
+case class Cookies(cache: Map[String, Set[ResponseCookie]]) {
+  def updateDomain(domain: String, cookie: ResponseCookie, remove: Boolean): Cookies = {
+
+    val key = cookie.domain.map(Cookies.domainGiven).flatMap { dom =>
+      if(domain.endsWith(dom)) Some(dom) else None
+    } getOrElse(domain)
+
+    //println(s"[$domain / $key] updating cookie ${cookie.name} (${cookie.domain.getOrElse("_")})")
+
+    cache.get(key) match
+      case Some(set) if remove => copy(cache = cache + (key -> (set.filterNot(_.name == cookie.name)         )))
+      case Some(set)           => copy(cache = cache + (key -> (set.filterNot(_.name == cookie.name) + cookie)))
+      case None if !remove     => copy(cache = cache + (key -> Set(cookie)))
+      case _ => this
   }
 
-  def write(file: File, cookies: Iterable[ResponseCookie]): Unit = {
-    val body = cookies.map(formatLine).mkString("\n")
-    file.overwrite(Header + body + (if (body.nonEmpty) "\n" else ""))
-  }
+  def all: Set[ResponseCookie] = cache.view.values.toSet.flatten
 
-  /**
-   * RFC 6265 §5.1.3 host/domain matching driven by the `hostOnly` flag.
-   * - hostOnly = true  : request host must equal cookie domain (case-insensitive).
-   * - hostOnly = false : request host must equal OR be a subdomain of cookie domain.
-   */
-  def matches(requestHost: String, cookie: ResponseCookie): Boolean = {
-    cookie.domain match {
-      case None    => false
-      case Some(d) =>
-        val bare = d.stripPrefix(".").toLowerCase
-        val host = requestHost.toLowerCase
-        if (cookie.hostOnly) host == bare
-        else                 host == bare || host.endsWith("." + bare)
-    }
-  }
-
-  private def parseLine(line: String): Option[ResponseCookie] = {
-    if (line.startsWith("#") && !line.startsWith(HttpOnlyPrefix)) None
-    else {
-      val cols = line.split('\t')
-      if (cols.length < 7) None
-      else {
-        val (rawDomain, httpOnly) =
-          if (cols(0).startsWith(HttpOnlyPrefix)) (cols(0).drop(HttpOnlyPrefix.length), true)
-          else                                    (cols(0)                            , false)
-
-        val includeSub = cols(1).equalsIgnoreCase("TRUE")
-        val path       = cols(2)
-        val secure     = cols(3).equalsIgnoreCase("TRUE")
-        val expires    = Option(cols(4)).flatMap(s => Try(s.toLong).toOption).filter(_ > 0)
-        val name       = cols(5)
-        val value      = cols(6)
-
-        // Column 2 carries the host-only-vs-domain distinction. Strip any
-        // leading dot from column 1 so `domain` always holds the bare
-        // canonical value (RFC 6265 §5.2.3 / §5.3 step 6).
-        val bareDomain = rawDomain.stripPrefix(".")
-
-        Some(DefaultResponseCookie(
-          url      = "",
-          name     = name,
-          value    = value,
-          domain   = Some(bareDomain),
-          path     = Some(path),
-          hostOnly = !includeSub,
-          secure   = Some(secure),
-          httpOnly = Some(httpOnly),
-          expires  = expires.map(s => ZonedDateTime.ofInstant(java.time.Instant.ofEpochSecond(s), ZoneId.of("UTC")))
-        ))
-      }
-    }
-  }
-
-  private def formatLine(cookie: ResponseCookie): String = {
-
-    val rawDomain  = cookie.domain.map(_.stripPrefix(".")).getOrElse(hostOf(cookie.url).getOrElse(""))
-    val includeSub = !cookie.hostOnly
-    val prefix     = if (cookie.httpOnly.contains(true)) HttpOnlyPrefix else ""
-    val path       = cookie.path.getOrElse("/")
-    val secure     = if (cookie.secure.contains(true)) "TRUE" else "FALSE"
-    val includeStr = if (includeSub) "TRUE" else "FALSE"
-    val expires    = cookie.expires.map(_.toEpochSecond.toString).getOrElse("0")
-
-    Seq(
-      prefix + rawDomain,
-      includeStr,
-      path,
-      secure,
-      expires,
-      cookie.name,
-      cookie.value
-    ).mkString("\t")
-  }
-
-  private def hostOf(url: String): Option[String] = {
-    if (url.isEmpty) None
-    else Try(new URI(url).getHost).toOption.filter(_ != null)
-  }
 }
 
 case class DefaultHttp() extends Http {
@@ -1001,27 +915,18 @@ case class DefaultHttp() extends Http {
     baseUrl     : String,
     ua          : String,
     headers     : Map[String, Set[String]],
-    cookies     : Set[ResponseCookie],
+    cookies     : Cookies,
     compressed  : Compression,
     proxy       : Option[HttpProxy],
-    certificate : Option[ClientCertificate],
-    options     : Option[HttpOptions])(using environment: HttpEnvironment, ctx: HttpContext): ZLT[HttpSession] = {
-
-    def buildCookieJar: ZLT[CookieJar] = ZIO.attemptBlocking {
-      val file = ctx.root / "cookies.txt"
-      file.touch()
-      NetscapeCookieFile.write(file, cookies)
-      CurlCookieJar(file)
-    }.mapError(BotError.of(UnexpectedError, s"Erro ao criar cookie jar"))
-
-    for
+    certificate : Option[ClientCertificate])(using environment: HttpEnvironment): ZLT[HttpSession] = {
+    for {
       counter <- Ref.make(0)
-      history <- Ref.make(Seq.empty[(ZonedDateTime, String)])
-      jar     <- buildCookieJar
-    yield DefaultHttpSession(
+      cookies <- Ref.make(cookies)
+      history <- Ref.make(Seq.empty)
+    } yield DefaultHttpSession(
       counter,
       history,
-      jar,
+      cookies,
       environment,
       charset,
       baseUrl,
@@ -1029,8 +934,7 @@ case class DefaultHttp() extends Http {
       headers,
       compressed,
       proxy,
-      certificate,
-      options
+      certificate
     )
   }
 
