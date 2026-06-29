@@ -6,6 +6,7 @@ object curl {
   import zealot.commons.*
   import zealot.commons.Outcome.*
   import zealot.http.FormEncoding.*
+  import zealot.http.cookie.CurlCookieJar
   import zio.*
   import zio.process.Command
 
