@@ -1,5 +1,8 @@
 # Zealot
 
+## Release v1.3.0
+LTS: 17/07/2026
+
  - Added `using HttpSession` to `HttpInterceptor` methods
 
 ## Release v1.2.0
