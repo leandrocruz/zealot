@@ -19,8 +19,8 @@ import scala.jdk.CollectionConverters.*
 import scala.util.Try
 
 trait HttpInterceptor {
-  def handle  (request: ExecutableHttpRequest, response: HttpResponse): ZLT[HttpResponse] = ZIO.succeed(response)
-  def onFollow(request: ExecutableHttpRequest, response: HttpResponse): ZLT[HttpResponse] = ZIO.succeed(response)
+  def handle  (request: ExecutableHttpRequest, response: HttpResponse)(using HttpSession): ZLT[HttpResponse] = ZIO.succeed(response)
+  def onFollow(request: ExecutableHttpRequest, response: HttpResponse)(using HttpSession): ZLT[HttpResponse] = ZIO.succeed(response)
 }
 
 enum HttpMethod:
