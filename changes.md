@@ -1,5 +1,10 @@
 # Zealot
 
+## Release v1.3.0
+LTS: 17/07/2026
+
+ - Added `using HttpSession` to `HttpInterceptor` methods
+
 ## Release v1.2.0
 LTS: 26/06/2026
 
@@ -16,7 +21,7 @@ LTS: 10/06/2026
 LTS: 28/04/2026
 
  - Using the native curl cookie jar (via `CookieJar`)
- - Added `HttpSession.options` 
+ - Added `HttpSession.options`
  - Added `ResponseCookie.hostOnly` wich is required to determine the cookie "url" in other contexts, like google chrome extensions
  - Removed legacy code `HttpSession.rebase`
 
