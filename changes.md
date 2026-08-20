@@ -1,5 +1,11 @@
 # Zealot
 
+## Release v1.3.2
+LTS: 20/08/2026
+
+ - Fixed an infinite redirect loop introduced in v1.3.1. `fixRelativeUrl` started routing every non-absolute `Location` through `HttpUtils.sanitize`, which re-encodes whole query values via `URLEncoder` and so turned an already-encoded `?acao=SSO%2Flogin` into `?acao=SSO%252Flogin`. eProc TJRJ (`eproc1g.tjrj.jus.br`) routes on `acao`, did not recognize the mangled value, and answered with the same redirect indefinitely. Relative locations now go through `HttpUtils.escapeIllegal`, which escapes only characters that are illegal in a URI and leaves a valid `%XX` triplet alone (a bare `%` is still escaped to `%25`). Escaping uses ISO-8859-1 for parity with the `URLEncoder` call it replaces. Both v1.3.1 behaviors are kept: bare-relative locations are still resolved against the request URL, and raw locations with spaces/accents (eProc TJMS) still parse.
+ - `escapeIllegal` also fixes two latent defects of `sanitize` on the redirect path: `split('=')` dropped base64 padding from a query value (`token=...sig==` became `token=...sig`) and threw `MatchError` on a value carrying its own `=`. `sanitize` itself is unchanged, since it is still used to parse the `Location` when detecting known eProc site errors.
+
 ## Release v1.3.1
 LTS: 20/08/2026
 
