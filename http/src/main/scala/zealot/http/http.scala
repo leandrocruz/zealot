@@ -746,7 +746,7 @@ case class DefaultHttpRequest (
 
           def handleRelative = {
             ZIO
-              .attempt(new URI(url).resolve(new URI(HttpUtils.sanitize(location))).normalize().toString)
+              .attempt(new URI(url).resolve(new URI(HttpUtils.escapeIllegal(location))).normalize().toString)
               .mapError(BotError.of(Outcome.HttpError, s"Error normalizing relative redirect '${location}'"))
           }
 
@@ -965,6 +965,41 @@ object HttpUtils {
       .replace("#", "%23")
       .replace("%", "%25")
       .replace("|", "%7C")
+  }
+
+  /**
+   * Escapes only the characters that are illegal in a URI, preserving percent-escapes that are
+   * already there.
+   *
+   * Unlike [[sanitize]], which re-encodes the whole query value, this keeps a valid '%XX' triplet
+   * as-is and only escapes a bare '%'. Re-encoding turns a redirect's '?acao=SSO%2Flogin' into
+   * '?acao=SSO%252Flogin', which the site reads as a different (invalid) action and answers with
+   * the same redirect, looping forever. Structural characters are preserved so that URI.resolve
+   * still sees the path/query boundaries.
+   *
+   * Charset defaults to ISO-8859-1 to match what [[sanitize]] did via URLEncoder.
+   */
+  def escapeIllegal(url: String, charset: Charset = iso): String = {
+
+    def isHex(c: Char) = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+
+    def unreserved(c: Char) = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || "-._~".contains(c)
+
+    def structural(c: Char) = ":/?#[]@!$&'()*+,;=".contains(c)
+
+    def escaped(idx: Int) = url.charAt(idx) == '%' && idx + 2 < url.length && isHex(url.charAt(idx + 1)) && isHex(url.charAt(idx + 2))
+
+    def escape(c: Char) = c.toString.getBytes(charset).map(b => f"%%${b & 0xFF}%02X").mkString
+
+    val sb = StringBuilder(url.length)
+    var i  = 0
+
+    while i < url.length do
+      val c = url.charAt(i)
+      if unreserved(c) || structural(c) || escaped(i) then sb.append(c) else sb.append(escape(c))
+      i += 1
+
+    sb.toString
   }
 
   def sanitize(url: String) = {
