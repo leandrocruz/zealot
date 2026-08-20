@@ -360,9 +360,7 @@ case class DefaultHttpSession(
 
     def error(tried: String, cause: Option[Throwable] = None) = BotError(HttpError, s"Error extraindo domínio de '$tried'", cause)
 
-    def tryHost = for
-      abs <- ZIO.attempt(new URL(url).toURI).mapError(e => error(url, Some(e)))
-    yield abs.getHost
+    def tryHost = ZIO.attempt(new URL(url).getHost /* must be lenient */).mapError(e => error(url, Some(e)))
 
     if      isAbsolute(url)           then tryHost
     else if isAbsolute(baseUrl + url) then domainGiven(baseUrl + url)
@@ -744,16 +742,15 @@ case class DefaultHttpRequest (
 
         def fixRelativeUrl(location: String): ZLT[String] = {
 
+          def isAbsolute = location.startsWith("http://") || location.startsWith("https://")
+
           def handleRelative = {
             ZIO
               .attempt(new URI(url).resolve(new URI(HttpUtils.sanitize(location))).normalize().toString)
               .mapError(BotError.of(Outcome.HttpError, s"Error normalizing relative redirect '${location}'"))
           }
 
-          (location.startsWith(".."), location.startsWith("/")) match
-            case (true, _) => handleRelative
-            case (_, true) => handleRelative
-            case _         => ZIO.succeed(location)
+          if isAbsolute then ZIO.succeed(location) else handleRelative
         }
 
         for {

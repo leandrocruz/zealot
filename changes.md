@@ -1,5 +1,11 @@
 # Zealot
 
+## Release v1.3.1
+LTS: 20/08/2026
+
+ - Fixed `BotError(HttpError, "Error extraindo domínio de ...")` crash when a redirect `Location` carries unencoded characters (spaces, accents, quotes, parentheses). `DefaultHttpSession.domainGiven` now reads the host via the lenient `new URL(url).getHost` instead of `new URL(url).toURI`, whose strict RFC 2396 validation threw `URISyntaxException` on the raw query string. Domain extraction only needs the host, so the stricter parse was never required. Seen on eProc TJMS (`eproc1g.tjms.jus.br`), whose `?acao=principal&msg=Não foi localizado usuário com este CPF (...)` redirect crashed cookie handling.
+ - `DefaultHttpRequest.fixRelativeUrl` now resolves and sanitizes **any** non-absolute redirect location, not just those starting with `..` or `/`. Bare-relative locations like `externo_controlador.php?...` previously bypassed both `URI.resolve` and `HttpUtils.sanitize` and were passed through raw, producing malformed URLs (e.g. `baseUrl + location` concatenated `/eproc` + `externo…` without a separator). Any location not starting with `http://`/`https://` is now treated as relative and resolved against the request URL.
+
 ## Release v1.3.0
 LTS: 17/07/2026
 
