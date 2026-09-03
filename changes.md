@@ -1,5 +1,10 @@
 # Zealot
 
+## Release v1.3.3
+LTS: 03/09/2026
+
+ - Using `--next` and `-L` flags (Using on eproc-router.scala at presto-shared)
+
 ## Release v1.3.2
 LTS: 20/08/2026
 
