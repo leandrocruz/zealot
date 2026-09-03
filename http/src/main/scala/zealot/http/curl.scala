@@ -20,8 +20,54 @@ object curl {
     def layer = ZLayer.succeed { CurlHttpEngine() }
   }
 
+  /* Um bloco de headers de resposta, junto da url do salto que o produziu */
+  case class HeaderBlock(url: String, lines: Seq[String]) {
+
+    private def valuesOf(prefix: String): Seq[String] = {
+      lines
+        .drop(1)
+        .filter(_.toLowerCase.startsWith(prefix))
+        .map(_.substring(prefix.length).trim)
+    }
+
+    def status     : Option[Int]    = lines.headOption.flatMap(_.split(" ").lift(1)).flatMap(_.toIntOption)
+    def location   : Option[String] = valuesOf("location:").headOption
+    def setCookies : Seq[String]    = valuesOf("set-cookie:")
+  }
+
+  object HeaderBlock {
+
+    /* mesma composição do 'fixRelativeUrl', que é como o zealot resolve um 'Location'
+       relativo quando é ele mesmo que segue o redirect */
+    private def resolve(base: String, location: String): String = {
+      if   location.startsWith("http://") || location.startsWith("https://")
+      then location
+      else Try(new java.net.URI(base).resolve(new java.net.URI(HttpUtils.escapeIllegal(location))).normalize().toString).getOrElse(base)
+    }
+
+    /* Com '-L' o arquivo de '-D' guarda um bloco de headers por salto (mais um bloco por
+       tunel do proxy, que nao tem 'Location' e portanto nao move a cadeia). Reconstruimos a
+       sequencia de urls a partir dele: cada bloco pertence a url do bloco anterior seguida
+       do 'Location' dele. Sem isso os cookies de um salto acabam atribuidos ao host errado. */
+    def from(url: String, lines: Seq[String]): Seq[HeaderBlock] = {
+
+      val grouped = lines.map(_.trim).filterNot(_.isEmpty).foldLeft(Seq.empty[Seq[String]]) { (acc, line) =>
+        if      line.startsWith("HTTP") then acc :+ Seq(line)
+        else if acc.isEmpty             then acc
+        else                                 acc.init :+ (acc.last :+ line)
+      }
+
+      grouped.foldLeft(Seq.empty[HeaderBlock]) { (acc, block) =>
+        val current = acc.lastOption match
+          case None       => url
+          case Some(prev) => prev.location.map(resolve(prev.url, _)).getOrElse(prev.url)
+        acc :+ HeaderBlock(current, block)
+      }
+    }
+  }
+
   object ResponseParser {
-    def parse(url: String, headersFile: File, bodyFile: File, output: String): Task[DefaultHttpResponse] = {
+    def parse(url: String, headersFile: File, bodyFile: File, output: String, allCookies: Boolean = false, effectiveUrl: Option[String] = None): Task[DefaultHttpResponse] = {
 
       def readLines: Task[Seq[String]] = {
         ZIO.attempt {
@@ -42,6 +88,17 @@ object curl {
           (line.substring(0, idx).trim.toLowerCase, line.substring(idx + 1).trim)
         }
         ZIO.attempt(lines.drop(1).map(_.trim).filterNot(_.isEmpty).map(toHeader).groupBy(_._1).view.mapValues(_.map(_._2).toSet).toMap)
+      }
+
+      /* Com '-L' o arquivo de headers traz um bloco por salto: os cookies dos saltos
+         intermediarios precisam chegar na sessao, senao ela perde a autenticacao, e cada
+         um tem que ir com a url do salto que o emitiu, que nem sempre e a url do request. */
+      def parseAllCookies(lines: Seq[String]): Task[Seq[ResponseCookie]] = {
+        val values = HeaderBlock
+          .from(url, lines)
+          .flatMap(block => block.setCookies.map((block.url, _)))
+          .distinct
+        ZIO.foreach(values)((hop, value) => ZIO.fromTry(DefaultCookie.from(hop, value)))
       }
 
       def readCharset(headers: Map[String, Set[String]]): Task[Option[Charset]] = {
@@ -94,8 +151,8 @@ object curl {
         code    <- readStatusCode(deduped)
         headers <- readHeaders(deduped)
         charset <- readCharset(headers)
-        cookies <- parseCookies(headers)
-      } yield DefaultHttpResponse(url, code, charset, headers, cookies, bodyFile)
+        cookies <- if allCookies then parseAllCookies(lines) else parseCookies(headers)
+      } yield DefaultHttpResponse(effectiveUrl.getOrElse(url), code, charset, headers, cookies, bodyFile)
     }
   }
 
@@ -180,6 +237,12 @@ object curl {
     override def execute(request: ExecutableHttpRequest, options: Option[HttpOptions])(using ctx: HttpContext, session: HttpSession, trace: Trace): ZLT[HttpResponse] = {
 
       def onError(msg: String)(cause: Throwable) = BotError(outcome = HttpError, explanation = msg, cause = Some(cause))
+
+      /* o exit code do curl distingue timeout de recusa de conexao, de falha de TLS...
+         sem ele todo erro de rede vira a mesma string opaca */
+      def onCurlError(cause: Throwable) = cause match
+        case CurlError(code, message, _, _) => BotError(outcome = HttpError, explanation = s"Error executing curl ($code/${message.getOrElse("???")})", cause = Some(cause))
+        case other                          => onError("Error executing curl")(other)
 
       def targetUrl = {
         val value = request.url.toLowerCase
@@ -316,6 +379,20 @@ object curl {
           }
         }
 
+        def follow: Seq[String] = {
+          if request.curlFollowRedirects
+          then Seq("--location", "--max-redirs", request.maxRedirects.toString)
+          else Seq.empty
+        }
+
+        /* Quando o curl segue o redirect a resposta vem de outra url, e so ele sabe qual.
+           O corpo vai para arquivo ('-o'), entao a saida padrao fica livre para isso. */
+        def writeOut: Seq[String] = {
+          if   request.curlFollowRedirects
+          then Seq("-w", """\n%{url_effective}\n""")
+          else Seq.empty
+        }
+
         def dumpHeaders : Seq[String] = Seq("-D", headersFile.toString)
         def dumpOutput  : Seq[String] = Seq("-o", bodyFile.toString)
 
@@ -350,8 +427,23 @@ object curl {
           session.proxy.map(proxyGiven).getOrElse(Seq.empty)
         }
 
+        /* O curl so reaproveita conexao dentro do mesmo processo. Quando a resposta desta
+           requisicao redireciona para um host cujo handshake pesa no caminho critico (token
+           de vida curta, por exemplo), 'warmup' abre a conexao com esse host antes, no mesmo
+           processo, e o follow do '-L' a reaproveita em vez de pagar TLS de novo. */
+        def warmupBlock: Seq[String] = {
+          request.warmupUrl match
+            case None      => Seq.empty
+            case Some(url) => Seq("-k") ++ version ++ tls ++ proxy ++ certificate
+                              ++ Seq("-o", "/dev/null", "-D", "/dev/null", url, "--next")
+        }
+
+        val main = version ++ tls ++ requestMethod ++ compressed ++ proxy ++ certificate ++ cookies ++ headerFields ++ formFields ++ follow ++ writeOut ++ dumpHeaders ++ dumpBody ++ dumpOutput ++ Seq(url)
+
         ZIO.attempt(
-           curl ++ version ++ tls ++ requestMethod ++ compressed ++ proxy ++ certificate ++ cookies ++ headerFields ++ formFields ++ dumpHeaders ++ dumpBody ++ dumpOutput ++ Seq(url)
+           if request.warmupUrl.isDefined
+           then Seq(curl.head) ++ warmupBlock ++ Seq("-k") ++ main
+           else curl ++ main
         )
       }
 
@@ -483,6 +575,39 @@ object curl {
         yield ()
       }
 
+      /* Com '-L' quem segue o redirect e o curl, entao os saltos intermediarios nao
+         passam pelo log de requisicao. O arquivo de '-D' guarda um bloco de header por
+         salto: reproduzimos a sequencia a partir dele para o rastro continuar legivel. */
+      def printCurlFollows(url: String, headersFile: File): ZLT[Unit] = {
+
+        def blocks: Seq[HeaderBlock] = {
+          HeaderBlock.from(url, headersFile.lines(using HttpUtils.iso).toSeq)
+        }
+
+        /* so os saltos: a resposta final ja sai no printResponse, e o bloco do tunel
+           do proxy nao e um salto (nao tem 'Location') */
+        def print(block: HeaderBlock): ZLT[Unit] = {
+          val status = block.status.map(_.toString).getOrElse("???")
+          ctx.logger.zlt(s"<< $status (curl follow ${block.url} > ${block.location.getOrElse("???")})")
+        }
+
+        if !request.curlFollowRedirects then ZIO.unit
+        else ZIO.attempt(blocks).orElseSucceed(Seq.empty).flatMap { all =>
+          ZIO.foreachDiscard(all.filter(_.location.isDefined))(print)
+        }
+      }
+
+      /* '%{url_effective}' do '-w': a url de onde a resposta final realmente veio */
+      def effectiveUrlGiven(output: String): Option[String] = {
+        if !request.curlFollowRedirects then None
+        else output
+          .linesIterator
+          .map(_.trim)
+          .filter(line => line.startsWith("http://") || line.startsWith("https://"))
+          .toSeq
+          .lastOption
+      }
+
       val tag = request.name.map(name => "-"+name).getOrElse("")
       val url = getUrl
       for {
@@ -493,9 +618,12 @@ object curl {
         _           <- printRequest(count)
         cmd         <- build(count, url, headersFile, resFile)                 .mapError(onError("Error building curl command line"))
         _           <- dumpRequest(cmd, reqFile)                               .mapError(onError("Error dumping request"           ))
-        output      <- run(cmd)                                                .mapError(onError("Error executing curl"            ))
-        response    <- ResponseParser.parse(url, headersFile, resFile, output) .mapError(onError("Error parsing curl response"     ))
+        output      <- run(cmd)                                                .mapError(onCurlError                                )
+        effective   =  effectiveUrlGiven(output)
+        response    <- ResponseParser.parse(url, headersFile, resFile, output, request.curlFollowRedirects, effective)
+                                                                               .mapError(onError("Error parsing curl response"     ))
         now         <- Clock.currentDateTime
+        _           <- printCurlFollows(url, headersFile)
         _           <- printResponse(now.toZonedDateTime, response)
         renamed     <- renameResponseFile(response, resFile)                   .mapError(onError("Error renaming response file"    ))
       } yield renamed
