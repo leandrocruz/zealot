@@ -133,6 +133,8 @@ trait HttpRequest {
   def suppressUserAgent                                      : HttpRequest
   def followRedirects   (follow: Boolean)                    : HttpRequest
   def maxRedirects      (max: Int)                           : HttpRequest
+  def curlFollowRedirects(follow: Boolean)                   : HttpRequest
+  def warmup            (url: String)                        : HttpRequest
   def certificate       (cert: ClientCertificate)            : HttpRequest
   def version           (ver: HttpVersion)                   : HttpRequest
   def tls               (ver: TlsVersion)                    : HttpRequest
@@ -160,6 +162,9 @@ trait ExecutableHttpRequest {
   def compressed      : Option[Compression]
   def formEncoding    : FormEncoding
   def followRedirects : Boolean
+  def maxRedirects    : Int
+  def curlFollowRedirects : Boolean
+  def warmupUrl       : Option[String]
   def setUserAgent    : Boolean
   def certificate     : Option[ClientCertificate]
   def version         : Option[HttpVersion]
@@ -393,11 +398,21 @@ case class DefaultHttpSession(
 
       given HttpSession = this
 
+      /* Só quando é o curl que segue o redirect uma resposta traz cookies de mais de um host
+         (um por salto). Nesse caso cada cookie vai para o domínio de quem o emitiu, que é o
+         que 'cookie.url' guarda. Fora daí todos os cookies vieram do próprio request e o
+         domínio continua saindo dele, como sempre. */
+      def domainOf(fallback: String)(cookie: ResponseCookie): UIO[String] = {
+        if   request.curlFollowRedirects
+        then domainGiven(cookie.url).orElseSucceed(fallback)
+        else ZIO.succeed(fallback)
+      }
+
       for {
         now     <- Clock.currentDateTime.map(_.toZonedDateTime)
         _       <- history.update(_ :+ (now, response.requestedUrl))
         domain  <- domainGiven(request.url).mapError(be => be.cause.map(new Exception(_)).getOrElse(new Exception(s"Error extraindo domínio da url '${request.url}'")))
-        _       <- ZIO.foreach(response.cookies) { update(now, domain) }
+        _       <- ZIO.foreach(response.cookies) { cookie => domainOf(domain)(cookie).flatMap(update(now, _)(cookie)) }
       } yield ZIO.unit
     }
 
@@ -689,6 +704,8 @@ case class DefaultHttpRequest (
   compressed      : Option[Compression]       = None,
   version         : Option[HttpVersion]       = None,
   tls             : Option[TlsVersion]        = None,
+  curlFollowRedirects : Boolean               = false,
+  warmupUrl           : Option[String]        = None,
   body            : HttpBody                  = NoBody) extends HttpRequest, ExecutableHttpRequest {
 
   private def update(map: Map[String, Set[String]])(name: String, value: Option[String]): Map[String, Set[String]] = {
@@ -714,6 +731,8 @@ case class DefaultHttpRequest (
   override def suppressUserAgent                                  : HttpRequest = copy(setUserAgent    = false)
   override def followRedirects (follow: Boolean)                  : HttpRequest = copy(followRedirects = follow)
   override def maxRedirects    (max: Int)                         : HttpRequest = copy(maxRedirects    = max)
+  override def curlFollowRedirects(follow: Boolean)               : HttpRequest = copy(curlFollowRedirects = follow)
+  override def warmup          (url: String)                      : HttpRequest = copy(warmupUrl       = Some(url))
   override def certificate     (cert: ClientCertificate)          : HttpRequest = copy(certificate     = Some(cert))
   override def compressed      (compression: Compression)         : HttpRequest = copy(compressed      = Some(compression))
   override def version         (ver: HttpVersion)                 : HttpRequest = copy(version         = Some(ver))
@@ -764,7 +783,7 @@ case class DefaultHttpRequest (
         } yield result
       }
 
-      if(request.followRedirects && response.follow)
+      if(request.followRedirects && !request.curlFollowRedirects && response.follow)
         for
           alternative <- interceptor.onFollow(this, response)
           result      <- if (alternative.follow) follow(alternative) else ZIO.succeed(alternative)
