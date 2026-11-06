@@ -228,6 +228,7 @@ trait Http {
     compressed  : Compression               = Compression.Off,
     proxy       : Option[HttpProxy]         = None,
     certificate : Option[ClientCertificate] = None,
+    tls         : Option[TlsVersion]        = None,
   )(using environment: HttpEnvironment) : ZLT[HttpSession]
 
   def url(url: String)            (using session: HttpSession): ZLT[HttpRequest]
@@ -356,7 +357,8 @@ case class DefaultHttpSession(
   headers     : Map[String, Set[String]],
   compressed  : Compression               = Compression.Off,
   proxy       : Option[HttpProxy]         = None,
-  certificate : Option[ClientCertificate] = None
+  certificate : Option[ClientCertificate] = None,
+  tls         : Option[TlsVersion]        = None /* aplicado a todo request da sessao, inclusive aos redirects seguidos pelo zealot */
 ) extends HttpSession {
 
   private def isAbsolute(url: String) = url.startsWith("http://") || url.startsWith("https://")
@@ -429,7 +431,8 @@ case class DefaultHttpSession(
       headers     = headers,
       cookies     = cookies.map(_.toRequest),
       certificate = certificate,
-      version     = version
+      version     = version,
+      tls         = tls
     )
   }
 
@@ -453,7 +456,8 @@ case class DefaultHttpSession(
         fields      = form.values.view.mapValues(Set(_)).toMap,
         cookies     = cookies.map(_.toRequest),
         certificate = certificate,
-        version     = version
+        version     = version,
+        tls         = tls
       )
     }
 
@@ -934,7 +938,8 @@ case class DefaultHttp() extends Http {
     cookies     : Cookies,
     compressed  : Compression,
     proxy       : Option[HttpProxy],
-    certificate : Option[ClientCertificate])(using environment: HttpEnvironment): ZLT[HttpSession] = {
+    certificate : Option[ClientCertificate],
+    tls         : Option[TlsVersion])(using environment: HttpEnvironment): ZLT[HttpSession] = {
     for {
       counter <- Ref.make(0)
       cookies <- Ref.make(cookies)
@@ -950,7 +955,8 @@ case class DefaultHttp() extends Http {
       headers,
       compressed,
       proxy,
-      certificate
+      certificate,
+      tls
     )
   }
 
