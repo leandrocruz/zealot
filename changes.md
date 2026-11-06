@@ -1,5 +1,11 @@
 # Zealot
 
+## Release v1.3.4
+LTS: 06/11/2026
+
+ - `Http.session` and `DefaultHttpSession` accept `tls: Option[TlsVersion]` (default `None`). Every request built by the session (`requestGiven` for url and form) carries it, including the redirects zealot follows on its own (`FR-...`), which are rebuilt from scratch and never inherited a `.tls(...)` set on the original request. Needed by presto-shared to pin TLS 1.2 on eProc TJSC, whose edge resets ~50% of TLS 1.3 ClientHellos since 03/11/2026.
+ - Binary incompatible: `Http.session` gained a parameter. Callers using named arguments compile unchanged, but must be recompiled against v1.3.4.
+
 ## Release v1.3.3
 LTS: 03/09/2026
 
